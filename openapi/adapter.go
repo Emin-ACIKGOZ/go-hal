@@ -4,11 +4,10 @@
 package openapi
 
 import (
-	"fmt"
-
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
+// LinkSchemaName is the key used in the Components.Schemas map for the HAL Link object.
 const (
 	LinkSchemaName = "Link"
 )
@@ -59,11 +58,11 @@ func (a *Adapter) MakeResource(schema *openapi3.Schema) {
 	// 1. Add _links
 	oneOfSchema := &openapi3.Schema{
 		OneOf: []*openapi3.SchemaRef{
-			openapi3.NewSchemaRef(fmt.Sprintf("#/components/schemas/%s", LinkSchemaName), nil),
+			openapi3.NewSchemaRef("#/components/schemas/"+LinkSchemaName, nil),
 			{
 				Value: &openapi3.Schema{
 					Type:  &openapi3.Types{openapi3.TypeArray},
-					Items: openapi3.NewSchemaRef(fmt.Sprintf("#/components/schemas/%s", LinkSchemaName), nil),
+					Items: openapi3.NewSchemaRef("#/components/schemas/"+LinkSchemaName, nil),
 				},
 			},
 		},

@@ -8,6 +8,8 @@ import (
 	"reflect"
 )
 
+// CollectionPage represents a standard HAL collection response.
+// It includes navigation links, embedded items, and pagination metadata.
 type CollectionPage struct {
 	Links    map[string]any `json:"_links"`
 	Embedded map[string]any `json:"_embedded"`
@@ -15,10 +17,16 @@ type CollectionPage struct {
 	Total    int            `json:"total,omitempty"`
 }
 
+// Collection creates a CollectionPage using the DefaultInstance.
 func Collection[T any](ctx context.Context, items []*T, total int, selfLink Link) *CollectionPage {
 	return DefaultInstance.Collection(ctx, items, total, selfLink)
 }
 
+// Collection wraps a slice of items into a HAL CollectionPage.
+// It iterates over the items, wraps each one using the registered generators,
+// and constructs the embedded items list.
+//
+// This method panics if items is not a slice.
 func (i *Instance) Collection(ctx context.Context, items any, total int, selfLink Link) *CollectionPage {
 	val := reflect.ValueOf(items)
 	if val.Kind() != reflect.Slice {

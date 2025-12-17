@@ -33,7 +33,7 @@ func TestAllocationEfficientHALAugmentationDuringJSONSerialization_AutoInjection
 	inst := New()
 	inst.RegisterCurie("acme", "https://docs/{rel}")
 
-	RegisterInstance(inst, func(ctx context.Context, u *User) []Link {
+	RegisterInstance(inst, func(_ context.Context, _ *User) []Link {
 		return []Link{{Rel: "acme:test", Href: "/x"}}
 	})
 

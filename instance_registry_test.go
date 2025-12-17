@@ -13,7 +13,7 @@ func TestRegisterInstance_TypeKey(t *testing.T) {
 	type User struct{}
 
 	inst := New()
-	RegisterInstance(inst, func(ctx context.Context, u *User) []Link {
+	RegisterInstance(inst, func(_ context.Context, _ *User) []Link {
 		return nil
 	})
 

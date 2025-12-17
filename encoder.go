@@ -12,32 +12,64 @@ import (
 	"reflect"
 )
 
+// MarshalJSON implements the json.Marshaler interface.
+// It serializes the wrapped Data and splices in the HAL "_links" and "_embedded"
+// fields into the resulting JSON object.
 func (e *Envelope) MarshalJSON() ([]byte, error) {
-	var dataBytes []byte
-	var err error
-
-	if e.Data != nil {
-		dataBytes, err = json.Marshal(e.Data)
-		if err != nil {
-			return nil, err
-		}
+	// 1. Marshal the underlying data
+	dataBytes, err := e.marshalData()
+	if err != nil {
+		return nil, err
 	}
 
-	dataBytes = bytes.TrimSpace(dataBytes)
-	isDataNull := len(dataBytes) == 0 || string(dataBytes) == "null"
-
-	isDataEmptyObj := false
-	if !isDataNull && len(dataBytes) >= 2 {
-		if dataBytes[0] == '{' {
-			rest := bytes.TrimSpace(dataBytes[1:])
-			if len(rest) == 1 && rest[0] == '}' {
-				isDataEmptyObj = true
-			}
-		} else {
-			return nil, errors.New("hal: data must be a JSON object to splice")
-		}
+	// 2. Validate data is an object (so we can inject fields)
+	isDataNull, isEmptyObj, err := checkJSONStructure(dataBytes)
+	if err != nil {
+		return nil, err
 	}
 
+	// 3. Prepare HAL metadata (_links, _embedded)
+	metaBytes, err := e.marshalMeta()
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. Combine
+	return spliceJSON(dataBytes, metaBytes, isDataNull, isEmptyObj), nil
+}
+
+func (e *Envelope) marshalData() ([]byte, error) {
+	if e.Data == nil {
+		return nil, nil
+	}
+	b, err := json.Marshal(e.Data)
+	if err != nil {
+		return nil, err
+	}
+	return bytes.TrimSpace(b), nil
+}
+
+// checkJSONStructure returns (isNull, isEmptyObject, error).
+func checkJSONStructure(b []byte) (bool, bool, error) {
+	if len(b) == 0 || string(b) == "null" {
+		return true, false, nil
+	}
+
+	// Must start with '{'
+	if b[0] != '{' {
+		return false, false, errors.New("hal: data must be a JSON object to splice")
+	}
+
+	// Check for empty object "{}"
+	// Since we trimmed in marshalData, "{}" should be exactly length 2.
+	if len(b) == 2 && b[1] == '}' {
+		return false, true, nil
+	}
+
+	return false, false, nil
+}
+
+func (e *Envelope) marshalMeta() ([]byte, error) {
 	if curies := e.instance.resolveCuries(e.links); len(curies) > 0 {
 		e.addLinkRaw("curies", curies)
 	}
@@ -51,30 +83,33 @@ func (e *Envelope) MarshalJSON() ([]byte, error) {
 	}
 
 	if len(meta) == 0 {
-		if isDataNull {
-			return []byte("{}"), nil
-		}
-		return dataBytes, nil
+		return nil, nil
 	}
+	return json.Marshal(meta)
+}
 
-	metaBytes, err := json.Marshal(meta)
-	if err != nil {
-		return nil, err
+func spliceJSON(data []byte, meta []byte, isDataNull, isDataEmptyObj bool) []byte {
+	if len(meta) == 0 {
+		if isDataNull {
+			return []byte("{}")
+		}
+		return data
 	}
 
 	if isDataNull || isDataEmptyObj {
-		return metaBytes, nil
+		return meta
 	}
 
-	totalLen := (len(dataBytes) - 1) + 1 + (len(metaBytes) - 1)
+	// Splicing: remove closing brace of data, add comma, remove opening brace of meta
+	totalLen := (len(data) - 1) + 1 + (len(meta) - 1)
 	var buf bytes.Buffer
 	buf.Grow(totalLen)
 
-	buf.Write(dataBytes[:len(dataBytes)-1])
+	buf.Write(data[:len(data)-1])
 	buf.WriteByte(',')
-	buf.Write(metaBytes[1:])
+	buf.Write(meta[1:])
 
-	return buf.Bytes(), nil
+	return buf.Bytes()
 }
 
 func (e *Envelope) computeLinks(ctx context.Context) {
@@ -103,6 +138,9 @@ func (e *Envelope) computeLinks(ctx context.Context) {
 	}
 }
 
+// AddLink appends a link to the envelope.
+// If a link with the same Relation (Rel) already exists, it is converted to a slice
+// of links as per the HAL specification.
 func (e *Envelope) AddLink(l Link) {
 	e.addLinkRaw(l.Rel, l)
 }
