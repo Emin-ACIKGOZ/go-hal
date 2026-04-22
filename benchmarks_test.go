@@ -36,7 +36,7 @@ func BenchmarkWrapPrecomputed(b *testing.B) {
 	inst := New()
 	ctx := context.Background()
 	u := &BenchmarkUser{ID: 42, Name: "Alice", Email: "alice@example.com", Age: 30}
-	
+
 	// Pre-computed links JSON: {"self":{"href":"/users/42"}}
 	linksJSON := []byte(`{"self":{"href":"/users/42"}}`)
 
@@ -50,15 +50,15 @@ func BenchmarkWrapPrecomputed(b *testing.B) {
 func BenchmarkRegisterStatic(b *testing.B) {
 	inst := New()
 	ctx := context.Background()
-	
+
 	// Register static links once (package-level function)
 	RegisterStatic(inst, &BenchmarkUser{}, []Link{{Rel: "self", Href: "/users/42"}})
-	
+
 	u := &BenchmarkUser{ID: 42, Name: "Alice", Email: "alice@example.com", Age: 30}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		env := inst.Wrap(ctx, u)  // Uses auto-detected precomputed
+		env := inst.Wrap(ctx, u) // Uses auto-detected precomputed
 		_, _ = json.Marshal(env)
 	}
 }

@@ -61,8 +61,12 @@ func TestRegisterStatic_MultipleLinks(t *testing.T) {
 func TestRegisterStatic_DifferentTypes(t *testing.T) {
 	inst := New()
 
-	type User1 struct{ ID int `json:"id"` }
-	type User2 struct{ ID int `json:"id"` }
+	type User1 struct {
+		ID int `json:"id"`
+	}
+	type User2 struct {
+		ID int `json:"id"`
+	}
 
 	RegisterStatic(inst, &User1{}, []Link{{Rel: "self", Href: "/users1"}})
 	RegisterStatic(inst, &User2{}, []Link{{Rel: "self", Href: "/users2"}})

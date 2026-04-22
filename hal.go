@@ -27,9 +27,9 @@
 package hal
 
 const (
-	jsonTrailingChars         = 2  // } to remove from JSON
+	jsonTrailingChars          = 2  // } to remove from JSON
 	precomputedLinksPrefixLen  = 10 // len(`{"_links":`)
-	precomputedLinksWrapperLen  = 2  // {}
+	precomputedLinksWrapperLen = 2  // {}
 )
 
 // Link represents a HAL Hypermedia link.
@@ -48,16 +48,16 @@ const (
 //	    Title:     "Current User",
 //	}
 type Link struct {
-	Rel    string `json:"-"` // Used for map keys, not serialized directly
-	Href   string `json:"href"`
-	Templated bool   `json:"templated,omitempty"`
-	Type   string `json:"type,omitempty"`
+	Rel         string `json:"-"` // Used for map keys, not serialized directly
+	Href        string `json:"href"`
+	Templated   bool   `json:"templated,omitempty"`
+	Type        string `json:"type,omitempty"`
 	Deprecation string `json:"deprecation,omitempty"` // OPTIONAL: link to deprecation info
-	Name   string `json:"name,omitempty"`
-	Profile string `json:"profile,omitempty"` // OPTIONAL: URI hint about target
-	Title  string `json:"title,omitempty"`
-	HrefLang string `json:"hreflang,omitempty"` // OPTIONAL: language of target
-	Method string `json:"method,omitempty"` // Non-standard: common hint for HTTP methods
+	Name        string `json:"name,omitempty"`
+	Profile     string `json:"profile,omitempty"` // OPTIONAL: URI hint about target
+	Title       string `json:"title,omitempty"`
+	HrefLang    string `json:"hreflang,omitempty"` // OPTIONAL: language of target
+	Method      string `json:"method,omitempty"`   // Non-standard: common hint for HTTP methods
 }
 
 // Envelope is the container for your data with HAL metadata.
@@ -74,11 +74,11 @@ type Link struct {
 //
 // The Envelope implements json.Marshaler and will inject HAL metadata automatically.
 type Envelope struct {
-	Data             any            // The user's struct
+	Data            any            // The user's struct
 	instance        *Instance      // The registry instance to use
 	links           map[string]any // Computed during marshal
-	embedded       map[string]any // Computed during marshal
-	precomputedJSON []byte       // OPTIMIZATION: pre-serialized links JSON
+	embedded        map[string]any // Computed during marshal
+	precomputedJSON []byte         // OPTIMIZATION: pre-serialized links JSON
 }
 
 // InstanceOption configures a new HAL Instance.

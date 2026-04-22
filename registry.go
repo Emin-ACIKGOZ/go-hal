@@ -37,11 +37,11 @@ type Generator func(ctx context.Context, v any) []Link
 //	// With strict mode
 //	inst := hal.New(hal.WithStrictMode())
 type Instance struct {
-	mu         sync.RWMutex
-	generators map[reflect.Type]Generator
+	mu          sync.RWMutex
+	generators  map[reflect.Type]Generator
 	precomputed map[reflect.Type]*PrecomputedLinks // OPTIMIZATION: static pre-computed
-	curies     map[string]string
-	strictMode bool
+	curies      map[string]string
+	strictMode  bool
 }
 
 // New creates a new HAL Instance.
@@ -52,7 +52,7 @@ type Instance struct {
 //	inst := hal.New(hal.WithStrictMode())
 func New(opts ...InstanceOption) *Instance {
 	i := &Instance{
-		generators:   make(map[reflect.Type]Generator),
+		generators:  make(map[reflect.Type]Generator),
 		precomputed: make(map[reflect.Type]*PrecomputedLinks),
 		curies:      make(map[string]string),
 	}
@@ -157,21 +157,21 @@ func RegisterInstance[T any](i *Instance, gen func(context.Context, *T) []Link) 
 //	env := inst.Wrap(ctx, &User{ID: 42})
 func RegisterStatic(i *Instance, target any, links []Link) {
 	targetType := reflect.TypeOf(target)
-	
+
 	// Pre-serialize links JSON once
 	linksMap := make(map[string]any, len(links))
 	for _, l := range links {
 		linksMap[l.Rel] = l
 	}
 	linksJSON, _ := json.Marshal(linksMap)
-	
+
 	// Wrap in _links object for easy splice
 	fullJSON := make([]byte, 0, len(linksJSON)+precomputedLinksWrapperLen+precomputedLinksPrefixLen)
 	fullJSON = append(fullJSON, `{`...)
 	fullJSON = append(fullJSON, `"_links":`...)
 	fullJSON = append(fullJSON, linksJSON...)
 	fullJSON = append(fullJSON, `}`...)
-	
+
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	// Store as precomputed for this type
@@ -209,19 +209,19 @@ func (i *Instance) registerReflect(gen any) {
 // automatically uses them, providing ~60% better performance.
 func (i *Instance) Wrap(ctx context.Context, data any) *Envelope {
 	t := reflect.TypeOf(data)
-	
+
 	// OPTIMIZATION: Check for precomputed first
 	i.mu.RLock()
 	pre, hasPre := i.precomputed[t]
 	i.mu.RUnlock()
 	if hasPre && pre != nil {
 		return &Envelope{
-			Data:             data,
+			Data:            data,
 			instance:        i,
 			precomputedJSON: pre.JSON,
 		}
 	}
-	
+
 	e := &Envelope{
 		Data:     data,
 		instance: i,
@@ -243,6 +243,7 @@ func (i *Instance) Wrap(ctx context.Context, data any) *Envelope {
 // # Input Format
 //
 // linksJSON must be a JSON object containing link relations:
+//
 //	{"self": {"href": "/users/42"}}
 //
 // # Example
@@ -252,7 +253,7 @@ func (i *Instance) Wrap(ctx context.Context, data any) *Envelope {
 //	json.Marshal(env)
 func (i *Instance) WrapPrecomputed(_ context.Context, data any, linksJSON []byte) *Envelope {
 	return &Envelope{
-		Data:             data,
+		Data:            data,
 		instance:        i,
 		precomputedJSON: linksJSON,
 	}
