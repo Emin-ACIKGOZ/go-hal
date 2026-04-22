@@ -33,7 +33,7 @@ func TestMarshal_InjectsLinks(t *testing.T) {
 	}
 
 	inst := New()
-	RegisterInstance(inst, func(ctx context.Context, u *User) []Link {
+	RegisterInstance(inst, func(_ context.Context, _ *User) []Link {
 		return []Link{{Rel: "self", Href: "/users/1"}}
 	})
 
@@ -62,7 +62,7 @@ func TestMarshal_EmptyStruct(t *testing.T) {
 	type Empty struct{}
 
 	inst := New()
-	RegisterInstance(inst, func(ctx context.Context, e *Empty) []Link {
+	RegisterInstance(inst, func(_ context.Context, _ *Empty) []Link {
 		return []Link{{Rel: "self", Href: "/empty"}}
 	})
 

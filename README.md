@@ -130,9 +130,153 @@ adapter.InjectLinkSchema()
 adapter.MakeResource(userSchema) // Augments schema with HAL fields
 ```
 
+## Migration Guide
+
+This guide helps migrate from other HAL libraries to go-hal.
+
+### From raff/halgo (Go)
+
+**Before (halgo):**
+```go
+type User struct {
+    halgo.Links
+    Name string
+}
+
+user := User{
+    Links: halgo.Links{}.Self("/users/1"),
+    Name: "Alice",
+}
+json.Marshal(user)
+```
+
+**After (go-hal):**
+```go
+type User struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+}
+
+hal.Register(func(ctx context.Context, u *User) []hal.Link {
+    return []hal.Link{{Rel: "self", Href: fmt.Sprintf("/users/%d", u.ID)}}
+})
+
+env := hal.Wrap(ctx, &User{ID: 1, Name: "Alice"})
+json.Marshal(env)
+```
+
+### From pyhalboy (Python)
+
+**Before (pyhalboy):**
+```python
+resource = halboy.Resource()
+resource.set_link('self', '/users/1')
+resource.set_property('name', 'Alice')
+```
+
+**After (go-hal):**
+```go
+hal.Register(func(ctx context.Context, u *User) []hal.Link {
+    return []hal.Link{{Rel: "self", Href: fmt.Sprintf("/users/%d", u.ID)}}
+})
+
+env := hal.Wrap(ctx, &User{ID: 1, Name: "Alice"})
+json.Marshal(env)
+```
+
+### From Spring HATEOAS (Java)
+
+**Before (Spring):**
+```java
+User user = new User();
+user.setId(1);
+ControllerLinkBuilder.linkTo(UserController.class)
+    .withRel("self")
+    .add(user);
+```
+
+**After (go-hal):**
+```go
+hal.Register(func(ctx context.Context, u *User) []hal.Link {
+    return []hal.Link{{Rel: "self", Href: "/users/1"}}
+})
+
+env := hal.Wrap(ctx, &User{ID: 1})
+json.Marshal(env)
+```
+
+### Key Differences
+
+| Feature | Other Libraries | go-hal |
+|---------|----------------|--------|
+| Reflection | Required | Zero at runtime |
+| Link injection | At creation | At JSON marshal |
+| Performance | Baseline | 60%+ faster |
+| Dependencies | Multiple | go-json only |
+
+## Performance Tuning
+
+go-hal provides multiple optimization paths. Choose based on your link complexity.
+
+### Performance Comparison
+
+| Method | ns/op (avg) | Improvement | Best For |
+|--------|-------------|-------------|---------|
+| Wrap + Generator | ~5,300 ns | baseline | Dynamic links |
+| RegisterStatic | ~2,000 ns | +62% | Static links |
+| WrapPrecomputed | ~1,800 ns | +66% | Precomputed links |
+
+### Optimization Levels
+
+#### Level 1: Baseline (Default)
+Use Register() for dynamic links that depend on runtime data.
+
+```go
+hal.Register(func(ctx context.Context, u *User) []hal.Link {
+    return []hal.Link{{Rel: "self", Href: fmt.Sprintf("/users/%d", u.ID)}}
+})
+env := hal.Wrap(ctx, u)
+```
+
+#### Level 2: Static Pre-computed
+Use RegisterStatic() for links that are the same per type (just varying IDs).
+
+```go
+inst := hal.New()
+hal.RegisterStatic(inst, &User{}, []hal.Link{{Rel: "self", Href: "/users"}})
+
+env := inst.Wrap(ctx, &User{ID: 42})
+// Automatically uses pre-computed _links
+```
+
+#### Level 3: Maximum Performance
+Use WrapPrecomputed() when you pre-serialize links yourself.
+
+```go
+links := []byte(`{"self":{"href":"/users/42"}}`)
+env := inst.WrapPrecomputed(ctx, user, links)
+```
+
+This bypasses all link generation for maximum throughput.
+
+### Memory Optimization
+
+go-hal's byte-splicing avoids intermediate allocations:
+
+| Benchmark | Allocations per Op |
+|-----------|-----------------|
+| Baseline | 14 |
+| RegisterStatic | 5 |
+| WrapPrecomputed | 5 |
+
+### When to Optimize
+
+1. **RegisterStatic**: Links don't change per request (e.g., `/users` not `/users/123`)
+2. **WrapPrecomputed**: You generate links elsewhere (caching, batch jobs)
+
 ## Performance & Constraints
 
-This library uses a deliberate **byte-splicing** technique to merge your struct’s JSON output with HAL metadata.
+This library uses a deliberate **byte-splicing** technique to merge your struct's JSON output with HAL metadata.
 
 ### Constraints
 

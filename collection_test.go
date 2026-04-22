@@ -55,7 +55,7 @@ func TestCollection_MarshalJSON_Recursive(t *testing.T) {
 
 	inst := New()
 	// Register generator for User so we expect links on individual items
-	RegisterInstance(inst, func(ctx context.Context, u *User) []Link {
+	RegisterInstance(inst, func(_ context.Context, _ *User) []Link {
 		return []Link{{Rel: "self", Href: "/user"}}
 	})
 
