@@ -211,20 +211,25 @@ json.Marshal(env)
 |---------|----------------|--------|
 | Reflection | Required | Zero at runtime |
 | Link injection | At creation | At JSON marshal |
-| Performance | Baseline | 60%+ faster |
 | Dependencies | Multiple | go-json only |
+| Type Safety | Dynamic | Compile-time verified |
 
 ## Performance Tuning
 
-go-hal provides multiple optimization paths. Choose based on your link complexity.
+go-hal provides three optimization levels. Use the baseline for correctness; optimize only if profiling shows HAL injection is a bottleneck.
 
 ### Performance Comparison
 
-| Method | ns/op (avg) | Improvement | Best For |
-|--------|-------------|-------------|---------|
-| Wrap + Generator | ~5,500 ns | baseline | Dynamic links |
-| RegisterStatic | ~2,100 ns | +62% | Static links |
-| WrapPrecomputed | ~1,900 ns | +66% | Precomputed links |
+All benchmarks include JSON marshaling. Measurements are ns/op on amd64 Linux.
+
+| Method | ns/op | vs Baseline | Best For |
+|--------|-------|------------|----------|
+| **Register** (dynamic) | 5,960 | baseline | Links that depend on instance data |
+| **RegisterStatic** | 2,008 | 66% faster | Links fixed per type |
+| **WrapPrecomputed** | 1,759 | 70% faster | Pre-serialized links (cached/batch) |
+| Raw JSON (no HAL) | 659 | — | Performance ceiling (not applicable) |
+
+**Note on hand-coded HAL:** Hand-writing HAL response structs is ~4.6x faster than go-hal's baseline (1,289 ns/op), but requires manual struct maintenance, offers no type safety for link generators, and is error-prone in large codebases. go-hal's cost is justified for maintainability.
 
 ### Optimization Levels
 
@@ -271,8 +276,10 @@ go-hal's byte-splicing avoids intermediate allocations:
 
 ### When to Optimize
 
-1. **RegisterStatic**: Links don't change per request (e.g., `/users` not `/users/123`)
-2. **WrapPrecomputed**: You generate links elsewhere (caching, batch jobs)
+1. **RegisterStatic**: Use when links are identical for every instance of a type (rare). Saves ~3,900 ns/op per resource.
+2. **WrapPrecomputed**: Use when you generate links in a separate pass (e.g., caching layer, batch API). Saves ~4,200 ns/op per resource.
+
+**Rule of thumb:** Optimize only if profiling shows HAL injection >5% of request latency. For most APIs, baseline performance is acceptable (6 µs per resource).
 
 ## Performance & Constraints
 
