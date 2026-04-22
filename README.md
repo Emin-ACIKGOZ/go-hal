@@ -222,9 +222,9 @@ go-hal provides multiple optimization paths. Choose based on your link complexit
 
 | Method | ns/op (avg) | Improvement | Best For |
 |--------|-------------|-------------|---------|
-| Wrap + Generator | ~5,300 ns | baseline | Dynamic links |
-| RegisterStatic | ~2,000 ns | +62% | Static links |
-| WrapPrecomputed | ~1,800 ns | +66% | Precomputed links |
+| Wrap + Generator | ~5,500 ns | baseline | Dynamic links |
+| RegisterStatic | ~2,100 ns | +62% | Static links |
+| WrapPrecomputed | ~1,900 ns | +66% | Precomputed links |
 
 ### Optimization Levels
 
