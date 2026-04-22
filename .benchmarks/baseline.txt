@@ -1,0 +1,16 @@
+BenchmarkHAL_Wrap_And_Marshal-8 6383 1620
+BenchmarkHAL_Marshal_Only-8 4470 881
+BenchmarkManual_HAL-8 1280 192
+BenchmarkRaw_JSON_No_HAL-8 658.3 80
+BenchmarkReflection_Based_HAL-8 8143 1684
+BenchmarkHAL_Multiple_Links-8 12570 3208
+BenchmarkManual_Multiple_Links-8 2492 400
+BenchmarkByteBuffer_Encoder-8 8613 1732
+BenchmarkAllocs_HAL_Wrap_And_Marshal-8 5878 1620
+BenchmarkAllocs_Manual_HAL-8 1234 192
+BenchmarkAllocs_Raw_JSON-8 640.3 80
+BenchmarkHAL_Large_Collection-8 784881 166756
+BenchmarkManual_Large_Collection-8 125150 19135
+BenchmarkBaseline-8 5085 1603
+BenchmarkWrapPrecomputed-8 1720 496
+BenchmarkRegisterStatic-8 2056 560

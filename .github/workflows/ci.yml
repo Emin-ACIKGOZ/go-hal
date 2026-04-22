@@ -39,7 +39,23 @@ jobs:
       - name: Run race detector
         run: go test -race ./...
 
-      - name: Check coverage
+      - name: Check test coverage
         run: |
           go test -coverprofile=coverage.out ./...
-          go tool cover -func=coverage.out | grep "total:" | awk '{print "Coverage: " $NF}'
+          coverage=$(go tool cover -func=coverage.out | grep "total:" | awk '{print $NF}' | sed 's/%//')
+          echo "Test Coverage: ${coverage}%"
+          min_coverage=70.0
+          if (( $(echo "$coverage < $min_coverage" | bc -l) )); then
+            echo "❌ Coverage ${coverage}% is below minimum ${min_coverage}%"
+            exit 1
+          fi
+          echo "✓ Coverage ${coverage}% meets minimum requirement (${min_coverage}%)"
+
+      - name: Run benchmarks
+        run: |
+          go test -run=^$ -bench=. -benchmem -benchtime=3s ./... | tee benchmark_results.txt
+
+      - name: Check benchmark regressions
+        run: |
+          # Store and compare benchmarks
+          scripts/check-benchmark-regression.sh
