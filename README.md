@@ -285,6 +285,26 @@ go-hal's byte-splicing avoids intermediate allocations:
 
 This library uses a deliberate **byte-splicing** technique to merge your struct's JSON output with HAL metadata.
 
+```mermaid
+graph TD
+    subgraph Data Preparation
+    S[User Struct] --> J[json.Marshal]
+    J --> B[Data Bytes: {...}]
+    end
+
+    subgraph HAL Injection
+    B --> C{Start '{'?}
+    C -- Yes --> SP[Splice: Remove last '}']
+    SP --> COMMA[Append ',']
+    COMMA --> META[Append '_links' / '_embedded']
+    META --> END[Append '}']
+    end
+
+    subgraph Result
+    END --> FINAL[Final HAL JSON]
+    end
+```
+
 ### Constraints
 
 1. Your data **must** marshal to a JSON object (`{...}`)
