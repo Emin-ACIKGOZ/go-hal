@@ -55,6 +55,47 @@ func TestMarshal_NonObjectFails(t *testing.T) {
 	}
 }
 
+func TestMarshal_EnvelopeValueAndPointer(t *testing.T) {
+	type User struct {
+		ID int `json:"id"`
+	}
+
+	inst := New()
+	RegisterInstance(inst, func(_ context.Context, _ *User) []Link {
+		return []Link{{Rel: "self", Href: "/users/1"}}
+	})
+
+	env := inst.Wrap(context.Background(), &User{ID: 1})
+	want := []byte(`{"id":1,"_links":{"self":{"href":"/users/1"}}}`)
+
+	for _, tc := range []struct {
+		name string
+		data any
+	}{
+		{name: "pointer", data: env},
+		{name: "value", data: *env},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b, err := json.Marshal(tc.data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertJSONEqual(t, b, want)
+		})
+	}
+}
+
+func TestMarshal_NilEnvelopePointer(t *testing.T) {
+	var env *Envelope
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "null" {
+		t.Fatalf("nil envelope pointer = %s, want null", b)
+	}
+}
+
 func TestMarshal_EmptyStruct(t *testing.T) {
 	// A struct with no fields marshals to "{}"
 	type Empty struct{}

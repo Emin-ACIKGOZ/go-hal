@@ -24,7 +24,7 @@ var ErrHALFieldConflict = errors.New("hal: data already contains reserved HAL fi
 // MarshalJSON implements the json.Marshaler interface.
 // It serializes the wrapped Data and splices in the HAL "_links" and "_embedded"
 // fields into the resulting JSON object.
-func (e *Envelope) MarshalJSON() ([]byte, error) {
+func (e Envelope) MarshalJSON() ([]byte, error) {
 	// Caller-supplied precomputed links are validated at construction time;
 	// surface that error rather than emitting corrupted JSON.
 	if e.precomputedErr != nil {
@@ -38,7 +38,7 @@ func (e *Envelope) MarshalJSON() ([]byte, error) {
 	return e.marshalGenerated()
 }
 
-func (e *Envelope) marshalPrecomputed() ([]byte, error) {
+func (e Envelope) marshalPrecomputed() ([]byte, error) {
 	if e.Data == nil {
 		return e.precomputedJSON, nil
 	}
@@ -62,7 +62,7 @@ func (e *Envelope) marshalPrecomputed() ([]byte, error) {
 	return splicePrecomputed(dataBytes, e.precomputedJSON), nil
 }
 
-func (e *Envelope) marshalGenerated() ([]byte, error) {
+func (e Envelope) marshalGenerated() ([]byte, error) {
 	// 1. Marshal the underlying data
 	dataBytes, err := e.marshalData()
 	if err != nil {
@@ -131,7 +131,7 @@ func isEmptyJSONObject(b []byte) bool {
 	return len(bytes.TrimSpace(b[1:len(b)-1])) == 0
 }
 
-func (e *Envelope) marshalData() ([]byte, error) {
+func (e Envelope) marshalData() ([]byte, error) {
 	if e.Data == nil {
 		return nil, nil
 	}
@@ -303,7 +303,7 @@ func checkHALFieldKey(dec *stdjson.Decoder) error {
 	return nil
 }
 
-func (e *Envelope) marshalMeta() ([]byte, error) {
+func (e Envelope) marshalMeta() ([]byte, error) {
 	// Build a local view instead of mutating e.links: an Envelope may be
 	// marshaled more than once, including concurrently.
 	links := e.links
