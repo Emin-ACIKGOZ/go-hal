@@ -60,6 +60,79 @@ func TestRegisterStatic_MultipleLinks(t *testing.T) {
 	}`))
 }
 
+func TestRegisterStatic_DuplicateRelations(t *testing.T) {
+	tests := []struct {
+		name      string
+		links     []Link
+		wantArray bool
+		wantHrefs []string
+	}{
+		{
+			name:      "single relation remains an object",
+			links:     []Link{{Rel: "self", Href: "/users/1"}},
+			wantHrefs: []string{"/users/1"},
+		},
+		{
+			name: "two relations become an array",
+			links: []Link{
+				{Rel: "self", Href: "/users/1"},
+				{Rel: "self", Href: "/users/1?page=2"},
+			},
+			wantArray: true,
+			wantHrefs: []string{"/users/1", "/users/1?page=2"},
+		},
+		{
+			name: "three relations preserve order",
+			links: []Link{
+				{Rel: "self", Href: "/users/1"},
+				{Rel: "self", Href: "/users/1?page=2"},
+				{Rel: "self", Href: "/users/1?page=3"},
+			},
+			wantArray: true,
+			wantHrefs: []string{"/users/1", "/users/1?page=2", "/users/1?page=3"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			inst := New()
+			RegisterStatic(inst, &StaticUser{}, tc.links)
+
+			env := inst.Wrap(context.Background(), &StaticUser{ID: 1})
+			b, err := json.Marshal(env)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertNoDuplicateKeys(t, b)
+
+			root, ok := decodeJSONValue(t, b).(map[string]any)
+			if !ok {
+				t.Fatal("document is not an object")
+			}
+			assertLinkRelationShapes(t, root)
+
+			links, ok := root["_links"].(map[string]any)
+			if !ok {
+				t.Fatalf("_links has type %T, want object", root["_links"])
+			}
+			_, isArray := links["self"].([]any)
+			if isArray != tc.wantArray {
+				t.Fatalf("self array form = %t, want %t", isArray, tc.wantArray)
+			}
+
+			objects := relationObjects(t, root, "self")
+			if len(objects) != len(tc.wantHrefs) {
+				t.Fatalf("got %d links, want %d", len(objects), len(tc.wantHrefs))
+			}
+			for i, wantHref := range tc.wantHrefs {
+				if got := objects[i]["href"]; got != wantHref {
+					t.Errorf("self[%d].href = %#v, want %q", i, got, wantHref)
+				}
+			}
+		})
+	}
+}
+
 func TestRegisterStatic_DifferentTypes(t *testing.T) {
 	inst := New()
 

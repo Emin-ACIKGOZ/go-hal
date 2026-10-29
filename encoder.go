@@ -220,13 +220,19 @@ func (e *Envelope) addLinkRaw(rel string, val any) {
 	if e.links == nil {
 		e.links = make(map[string]any, defaultLinksCapacity)
 	}
-	if existing, ok := e.links[rel]; ok {
+	appendLinkValue(e.links, rel, val)
+}
+
+// appendLinkValue adds a relation value with the multiplicity rules used by
+// the HAL serializer: one value is an object, repeated values form an array.
+func appendLinkValue(links map[string]any, rel string, val any) {
+	if existing, ok := links[rel]; ok {
 		if slice, isSlice := existing.([]any); isSlice {
-			e.links[rel] = append(slice, val)
+			links[rel] = append(slice, val)
 		} else {
-			e.links[rel] = []any{existing, val}
+			links[rel] = []any{existing, val}
 		}
 	} else {
-		e.links[rel] = val
+		links[rel] = val
 	}
 }

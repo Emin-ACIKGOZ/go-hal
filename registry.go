@@ -159,10 +159,10 @@ func RegisterInstance[T any](i *Instance, gen func(context.Context, *T) []Link) 
 func RegisterStatic(i *Instance, target any, links []Link) {
 	targetType := reflect.TypeOf(target)
 
-	// Pre-serialize links JSON once
+	// Pre-serialize links JSON once, preserving repeated relations as arrays.
 	linksMap := make(map[string]any, len(links))
 	for _, l := range links {
-		linksMap[l.Rel] = l
+		appendLinkValue(linksMap, l.Rel, l)
 	}
 	linksJSON, _ := json.Marshal(linksMap)
 
