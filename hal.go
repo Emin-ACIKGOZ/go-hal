@@ -42,7 +42,8 @@ type Link struct {
 }
 
 // Envelope is the container for your data with HAL metadata.
-// It wraps your Go struct and injects _links and _embedded during JSON serialization.
+// It wraps your Go value and injects _links during JSON serialization.
+// CollectionPage separately emits the project-specific _embedded.items shape.
 //
 // To create an Envelope:
 //

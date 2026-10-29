@@ -33,7 +33,8 @@ according to draft-11.
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| Resource object with `_links` / `_embedded` | Supported | JSON object roots only. `null` and empty objects are normalized to an empty resource. |
+| Resource object `_links` | Supported | JSON object roots only. `null` and empty objects are normalized to an empty resource. |
+| Resource object `_embedded` | Convention only | `CollectionPage` emits `_embedded.items`; arbitrary embedded resources and top-level `_embedded` in wrapped data are not exposed. |
 | Link Object fields | Supported | `href`, `templated`, `type`, `deprecation`, `name`, `profile`, `title`, `hreflang`; `method` is a non-standard extension. |
 | Relation multiplicity | Supported | One value is an object; repeated values become an array. |
 | HAL CURIEs | Supported | Declarations are merged by name; user declarations win over registered prefixes. |
@@ -65,17 +66,19 @@ according to draft-11.
 Unknown link fields pass through unchanged. Empty relation arrays are allowed.
 Caller bytes are copied, so later mutation cannot corrupt a handle or envelope.
 
-`PrecomputedLinks` handles are immutable and reusable across envelopes and
-instances. The zero value means an empty link set. A hand-built, non-validated
-handle with JSON is rejected at marshal time.
+`PrecomputedLinks` handles are read-only by convention and reusable across
+envelopes and instances. Do not mutate the exported `JSON` field after
+compilation. The zero value means an empty link set. A hand-built,
+non-validated handle with JSON is rejected at marshal time.
 
 ### Static links
 
 `RegisterStatic` panics for a nil instance, a nil or non-pointer target, an
 empty relation, or invalid/duplicate CURIE declarations. A typed-nil pointer
 target is accepted. Empty links suppress generators and emit no `_links`.
-Registered CURIEs resolve at wrap time, not registration time, so late
-registrations and cross-instance reuse behave predictably.
+Registered CURIEs resolve at wrap time, not registration time, so a late
+registration on the same instance is reflected. Static links are stored per
+instance; only compiled `PrecomputedLinks` handles are reusable across instances.
 
 ### Generated links
 
@@ -88,14 +91,15 @@ to set it.
 
 ### Envelope mutation
 
-Static and precomputed envelopes are immutable: `AddLink` returns a deferred
-`ErrAddLinkPrecomputed` from marshaling. Generated and raw envelopes continue to
-accept links. An empty or whitespace-only relation is a deferred error.
+Static and precomputed envelopes are immutable: `AddLink` records a deferred
+`ErrAddLinkPrecomputed`, returned by marshaling. Generated and raw envelopes
+continue to accept links. An empty or whitespace-only relation is also recorded
+as a deferred error.
 
 ## Concurrency
 
 `Instance` registration is guarded by a read/write mutex. Compiled
-`PrecomputedLinks` handles are read-only after compilation. An `Envelope` may be
+`PrecomputedLinks` handles are read-only by convention after compilation. An `Envelope` may be
 marshaled repeatedly and concurrently as long as it is not mutated; `AddLink`
 is not safe to call concurrently with marshaling. Passing an envelope by value
 copies its internal map references, so link maps are shared unless the envelope

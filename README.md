@@ -1,9 +1,10 @@
 # go-hal
 
 A HAL (Hypertext Application Language) serializer for Go. It wraps Go values in
-an envelope and injects `_links` and `_embedded` during JSON marshaling, with
-typed link generators, reusable precomputed links, CURIEs, and an optional
-OpenAPI adapter.
+an envelope and injects `_links` during JSON marshaling, with typed link
+generators, reusable precomputed links, CURIEs, and an optional OpenAPI
+adapter. `CollectionPage` also emits a project-specific `_embedded.items`
+convention; arbitrary embedded resources are not exposed.
 
 The implementation targets the supported subset of
 `draft-kelly-json-hal-11` (an expired IETF Informational draft, not an RFC).
@@ -135,7 +136,7 @@ There are two entry points:
 // Validates and copies on every call. Convenient for one-off input.
 env := inst.WrapPrecomputed(ctx, user, linksJSON)
 
-// Validate once, then reuse. The handle is immutable and instance-independent.
+// Validate once, then reuse. Treat the handle as read-only and instance-independent.
 compiled, err := hal.CompilePrecomputedLinks(linksJSON)
 if err != nil {
 	return err
@@ -150,10 +151,11 @@ validated is rejected at marshal time. Static and precomputed envelopes reject
 `AddLink` with `ErrAddLinkPrecomputed`; use a generated or raw envelope if you
 need to add links dynamically.
 
-`RegisterStatic` serializes links once per type. It panics for a nil instance, a
-nil or non-pointer target, empty relations, or invalid/duplicate CURIE
-declarations. Registered CURIEs resolve at wrap time, so late registrations and
-cross-instance reuse work as expected.
+`RegisterStatic` serializes links once per instance and type. It panics for a
+nil instance, a nil or non-pointer target, empty relations, or invalid/duplicate
+CURIE declarations. Registered CURIEs resolve at wrap time, so a late
+registration on the same instance is reflected. Only compiled
+`PrecomputedLinks` handles are reusable across instances.
 
 ## CURIEs
 
@@ -166,7 +168,8 @@ is emitted in a `curies` array. Unknown prefixes keep the relation but produce
 no declaration. User-supplied `curies` declarations win over registered
 declarations with the same name. Duplicate names within one source return
 `ErrDuplicateCurie`; empty or whitespace-bearing names and empty hrefs return
-`ErrInvalidCurie`.
+`ErrInvalidCurie`. `RegisterCurie` panics immediately for an empty/whitespace
+prefix or an empty href.
 
 Generated declarations set `templated: true`. User declarations are not required
 to set it, and `href` template syntax is not validated (see
@@ -326,9 +329,9 @@ publishes an advisory `benchstat` comparison; it does not fail builds.
    use a strict encoder if that matters.
 4. `href` is required on Link Objects. URI syntax, RFC 6570 templates, and link
    relation registries are not validated.
-5. Static and precomputed envelopes are immutable. `AddLink` on them returns
-   `ErrAddLinkPrecomputed` from marshaling. An empty relation is also a deferred
-   error.
+5. Static and precomputed envelopes are immutable. `AddLink` on them records a
+   deferred `ErrAddLinkPrecomputed`, returned by marshaling. An empty relation
+   is also recorded as a deferred error.
 6. `Instance` registration is concurrency-safe. An `Envelope` may be marshaled
    concurrently only if it is not mutated.
 
