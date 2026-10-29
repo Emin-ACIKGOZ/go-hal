@@ -24,14 +24,29 @@ func TestWrapPrecomputed_Basic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !contains(b, `"id":42`) {
-		t.Fatalf("expected id in output: %s", b)
+	expected := `{"id":42,"name":"Alice","_links":{"self":{"href":"/users/42"}}}`
+	if string(b) != expected {
+		t.Fatalf("expected %s, got %s", expected, b)
 	}
-	if !contains(b, `"_links"`) {
-		t.Fatalf("expected _links in output: %s", b)
+}
+
+func TestWrapPrecomputed_AlreadyWrapped(t *testing.T) {
+	type User struct {
+		ID int `json:"id"`
 	}
-	if !contains(b, `"self"`) {
-		t.Fatalf("expected self link in output: %s", b)
+
+	inst := New()
+	linksJSON := []byte(`{"_links":{"self":{"href":"/users/42"}}}`)
+
+	env := inst.WrapPrecomputed(context.Background(), &User{ID: 42}, linksJSON)
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := `{"id":42,"_links":{"self":{"href":"/users/42"}}}`
+	if string(b) != expected {
+		t.Fatalf("expected %s, got %s", expected, b)
 	}
 }
 
@@ -45,8 +60,9 @@ func TestWrapPrecomputed_NilData(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if string(b) != string(linksJSON) {
-		t.Fatalf("expected just links for nil data: %s", b)
+	expected := `{"_links":{"self":{"href":"/users/42"}}}`
+	if string(b) != expected {
+		t.Fatalf("expected %s, got %s", expected, b)
 	}
 }
 
@@ -63,7 +79,7 @@ func TestWrapPrecomputed_EmptyLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !contains(b, `"id":1`) {
-		t.Fatalf("expected data in output: %s", b)
+	if string(b) != `{"id":1}` {
+		t.Fatalf("expected data in output, got %s", b)
 	}
 }

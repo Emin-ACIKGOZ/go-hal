@@ -255,8 +255,31 @@ func (i *Instance) WrapPrecomputed(_ context.Context, data any, linksJSON []byte
 	return &Envelope{
 		Data:            data,
 		instance:        i,
-		precomputedJSON: linksJSON,
+		precomputedJSON: normalizePrecomputedLinks(linksJSON),
 	}
+}
+
+// normalizePrecomputedLinks wraps raw link relations in a top-level "_links"
+// object. It accepts the already-wrapped form used internally by RegisterStatic
+// so callers can pass either representation.
+func normalizePrecomputedLinks(linksJSON []byte) []byte {
+	if len(linksJSON) == 0 {
+		return linksJSON
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(linksJSON, &fields); err != nil {
+		return linksJSON
+	}
+	if _, ok := fields["_links"]; ok {
+		return linksJSON
+	}
+
+	wrapped := make([]byte, 0, len(linksJSON)+precomputedLinksPrefixLen+precomputedLinksWrapperLen)
+	wrapped = append(wrapped, `{"_links":`...)
+	wrapped = append(wrapped, linksJSON...)
+	wrapped = append(wrapped, '}')
+	return wrapped
 }
 
 // WrapRaw creates an envelope without computing links.
