@@ -23,11 +23,14 @@ All notable changes to this project are documented here. The format follows
   empty links as an empty, generator-suppressing link set. Registered CURIEs
   resolve at wrap time.
 - User CURIE declarations win over registered declarations with the same name.
+  Unknown fields on user `curies` declarations survive merging.
+- `RegisterCurie` panics for an empty/whitespace prefix or empty href.
 - Static and precomputed envelopes reject `AddLink` at marshaling time.
 - `CollectionPage` omits empty `_links` / `_embedded` containers and always
   emits `count` and `total`.
 - `WrapPrecomputed` copies caller-owned link bytes and compiles on every call;
-  use the compiled API for hot paths.
+  use the compiled API for hot paths. Compiled handles are read-only by
+  convention, and marshaling cached links returns an owned copy.
 - CI runs Go 1.22.5, 1.24.11, and stable with vet, shuffle, race, coverage, and
   fuzz smoke tests. Benchmark comparison is advisory `benchstat`.
 
