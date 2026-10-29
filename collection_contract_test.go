@@ -224,6 +224,40 @@ func TestCollectionConvention_SelfLinkRelIsIgnored(t *testing.T) {
 	}
 }
 
+func TestCollectionConvention_OmitsEmptyContainers(t *testing.T) {
+	tests := []struct {
+		name string
+		page CollectionPage
+		want []byte
+	}{
+		{
+			name: "zero value",
+			page: CollectionPage{},
+			want: []byte(`{"count":0}`),
+		},
+		{
+			name: "empty maps",
+			page: CollectionPage{Links: map[string]any{}, Embedded: map[string]any{}},
+			want: []byte(`{"count":0}`),
+		},
+		{
+			name: "links only",
+			page: CollectionPage{Links: map[string]any{"self": Link{Rel: "self", Href: "/x"}}},
+			want: []byte(`{"_links":{"self":{"href":"/x"}},"count":0}`),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			b, err := json.Marshal(tc.page)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertJSONEqual(t, b, tc.want)
+		})
+	}
+}
+
 func TestCollectionConvention_NonSlicePanics(t *testing.T) {
 	tests := []struct {
 		name  string

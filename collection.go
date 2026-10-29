@@ -11,8 +11,8 @@ import (
 // CollectionPage represents a standard HAL collection response.
 // It includes navigation links, embedded items, and pagination metadata.
 type CollectionPage struct {
-	Links    map[string]any `json:"_links"`
-	Embedded map[string]any `json:"_embedded"`
+	Links    map[string]any `json:"_links,omitempty"`
+	Embedded map[string]any `json:"_embedded,omitempty"`
 	Count    int            `json:"count"`
 	Total    int            `json:"total,omitempty"`
 }
