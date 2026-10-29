@@ -131,8 +131,18 @@ func FuzzLink_AddLink(f *testing.F) {
 		}
 		e.AddLink(Link{Rel: rel, Href: href})
 
-		if e.links[rel] == nil {
-			t.Fatalf("link %s not added", rel)
+		out, err := json.Marshal(e)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		assertNoDuplicateKeys(t, out)
+		root := fuzzDecodeObject(t, out)
+		links, ok := root["_links"].(map[string]any)
+		if !ok {
+			t.Fatalf("_links missing from %s", out)
+		}
+		if _, exists := links[rel]; !exists {
+			t.Fatalf("link %q missing from %s", rel, out)
 		}
 	})
 }
@@ -183,6 +193,18 @@ func FuzzWrapPrecomputed(f *testing.F) {
 			t.Fatalf("output root is not an object: %s", out)
 		}
 
+		if bytes.Equal(linksJSON, fuzzPositiveLinks) && bytes.Equal(data, fuzzPositiveData) {
+			root := fuzzDecodeObject(t, out)
+			links, ok := root["_links"].(map[string]any)
+			if !ok {
+				t.Fatalf("positive control lost _links: %s", out)
+			}
+			self, ok := links["self"].(map[string]any)
+			if !ok || self["href"] != "/x" {
+				t.Fatalf("positive control lost self href: %s", out)
+			}
+		}
+
 		dataKeys, dataObject := fuzzTopLevelObjectKeys(data)
 		_, hasLinks := dataKeys[fieldLinks]
 		_, hasEmbedded := dataKeys[fieldEmbedded]
@@ -216,14 +238,14 @@ func FuzzSplicePrecomputed(f *testing.F) {
 		}
 
 		out := splicePrecomputed(data, linksJSON)
-		if len(out) == 0 {
-			return
-		}
 
 		dataKeys, dataObject := fuzzTopLevelObjectKeys(data)
 		linkKeys, linksObject := fuzzTopLevelObjectKeys(linksJSON)
 		if !dataObject || !linksObject {
 			return
+		}
+		if len(out) == 0 {
+			t.Fatalf("object splice produced empty output for %s + %s", data, linksJSON)
 		}
 
 		if !json.Valid(out) {
