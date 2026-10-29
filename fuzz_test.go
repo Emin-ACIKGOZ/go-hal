@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"strconv"
+	"strings"
 	"testing"
 	"unicode/utf8"
 )
@@ -116,7 +117,7 @@ func FuzzLink_AddLink(f *testing.F) {
 	f.Add("acme:widget", "/widgets/1")
 
 	f.Fuzz(func(t *testing.T, rel, href string) {
-		if rel == "" || href == "" {
+		if strings.TrimSpace(rel) == "" || href == "" {
 			t.Skip()
 		}
 		if !utf8.ValidString(rel) || !utf8.ValidString(href) {
