@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-30
+
 ### Added
 
 - `CompilePrecomputedLinks` and `(*Instance).WrapPrecomputedLinks` for validated

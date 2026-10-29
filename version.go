@@ -10,11 +10,11 @@ var versionInfo = struct {
 	PreRelease string
 }{
 	Major: 1,
-	Minor: 0,
+	Minor: 1,
 	Patch: 0,
 }
 
-// GetVersion returns the version string (e.g., "v1.0.0" or "v1.0.0-beta")
+// GetVersion returns the version string (e.g., "v1.1.0" or "v1.1.0-beta")
 func GetVersion() string {
 	if versionInfo.PreRelease != "" {
 		return fmt.Sprintf("v%d.%d.%d-%s", versionInfo.Major, versionInfo.Minor, versionInfo.Patch, versionInfo.PreRelease)
