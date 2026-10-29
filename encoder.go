@@ -104,14 +104,21 @@ func checkJSONStructure(b []byte) (bool, bool, error) {
 }
 
 func (e *Envelope) marshalMeta() ([]byte, error) {
+	// Build a local view instead of mutating e.links: an Envelope may be
+	// marshaled more than once, including concurrently.
+	links := e.links
 	if e.instance != nil {
 		if curies := e.instance.resolveCuries(e.links); len(curies) > 0 {
-			e.addLinkRaw("curies", curies)
+			links = make(map[string]any, len(e.links)+1)
+			for rel, value := range e.links {
+				links[rel] = value
+			}
+			links["curies"] = mergeCuries(links["curies"], curies)
 		}
 	}
 
 	// Fast path: no links
-	if len(e.links) == 0 {
+	if len(links) == 0 {
 		if e.embedded != nil && len(e.embedded) > 0 {
 			return json.Marshal(map[string]any{"_embedded": e.embedded})
 		}
@@ -121,12 +128,39 @@ func (e *Envelope) marshalMeta() ([]byte, error) {
 	// Only create map if needed
 	if e.embedded != nil && len(e.embedded) > 0 {
 		return json.Marshal(map[string]any{
-			"_links":    e.links,
+			"_links":    links,
 			"_embedded": e.embedded,
 		})
 	}
 
-	return json.Marshal(map[string]any{"_links": e.links})
+	return json.Marshal(map[string]any{"_links": links})
+}
+
+// mergeCuries appends resolved CURIE declarations to any user-supplied curies
+// relation without nesting relation arrays.
+func mergeCuries(existing any, curies []Link) any {
+	merged := make([]any, 0, len(curies)+1)
+	merged = appendRelationValue(merged, existing)
+	for _, curie := range curies {
+		merged = append(merged, curie)
+	}
+	return merged
+}
+
+func appendRelationValue(dst []any, value any) []any {
+	switch v := value.(type) {
+	case nil:
+		return dst
+	case []any:
+		return append(dst, v...)
+	case []Link:
+		for _, link := range v {
+			dst = append(dst, link)
+		}
+		return dst
+	default:
+		return append(dst, v)
+	}
 }
 
 func spliceJSON(data []byte, meta []byte, isDataNull, isDataEmptyObj bool) []byte {
