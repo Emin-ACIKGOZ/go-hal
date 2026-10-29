@@ -39,9 +39,13 @@ func (a *Adapter) InjectLinkSchema() {
 		WithProperty("href", openapi3.NewStringSchema()).
 		WithProperty("templated", openapi3.NewBoolSchema()).
 		WithProperty("type", openapi3.NewStringSchema()).
-		WithProperty("title", openapi3.NewStringSchema()).
+		WithProperty("deprecation", openapi3.NewStringSchema()).
 		WithProperty("name", openapi3.NewStringSchema()).
+		WithProperty("profile", openapi3.NewStringSchema()).
+		WithProperty("title", openapi3.NewStringSchema()).
+		WithProperty("hreflang", openapi3.NewStringSchema()).
 		WithProperty("method", openapi3.NewStringSchema()) // Hint
+	linkSchema.Required = []string{"href"}
 
 	a.doc.Components.Schemas[LinkSchemaName] =
 		openapi3.NewSchemaRef("", linkSchema)
@@ -55,14 +59,24 @@ func (a *Adapter) MakeResource(schema *openapi3.Schema) {
 		schema.Properties = make(openapi3.Schemas)
 	}
 
+	// Resolve the Link schema value alongside the $ref so the generated
+	// document can be validated without a separate loader pass.
+	var linkValue *openapi3.Schema
+	if linkRef, ok := a.doc.Components.Schemas[LinkSchemaName]; ok && linkRef != nil {
+		linkValue = linkRef.Value
+	}
+	linkRef := func() *openapi3.SchemaRef {
+		return openapi3.NewSchemaRef("#/components/schemas/"+LinkSchemaName, linkValue)
+	}
+
 	// 1. Add _links
 	oneOfSchema := &openapi3.Schema{
 		OneOf: []*openapi3.SchemaRef{
-			openapi3.NewSchemaRef("#/components/schemas/"+LinkSchemaName, nil),
+			linkRef(),
 			{
 				Value: &openapi3.Schema{
 					Type:  &openapi3.Types{openapi3.TypeArray},
-					Items: openapi3.NewSchemaRef("#/components/schemas/"+LinkSchemaName, nil),
+					Items: linkRef(),
 				},
 			},
 		},
