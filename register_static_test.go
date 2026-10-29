@@ -133,6 +133,142 @@ func TestRegisterStatic_DuplicateRelations(t *testing.T) {
 	}
 }
 
+func TestRegisterStatic_ValidatesInputs(t *testing.T) {
+	tests := []struct {
+		name   string
+		inst   *Instance
+		target any
+		links  []Link
+		want   string
+	}{
+		{
+			name:   "nil instance",
+			inst:   nil,
+			target: &StaticUser{},
+			want:   "instance must not be nil",
+		},
+		{
+			name: "nil target",
+			inst: New(),
+			want: "target must not be nil",
+		},
+		{
+			name:   "value target",
+			inst:   New(),
+			target: StaticUser{},
+			want:   "target must be a pointer",
+		},
+		{
+			name:   "empty relation",
+			inst:   New(),
+			target: &StaticUser{},
+			links:  []Link{{Href: "/x"}},
+			want:   "link relation must not be empty",
+		},
+		{
+			name:   "whitespace relation",
+			inst:   New(),
+			target: &StaticUser{},
+			links:  []Link{{Rel: "  ", Href: "/x"}},
+			want:   "link relation must not be empty",
+		},
+		{
+			name:   "curie without name",
+			inst:   New(),
+			target: &StaticUser{},
+			links:  []Link{{Rel: "curies", Href: "https://example.com/{rel}"}},
+			want:   "invalid CURIE declaration",
+		},
+		{
+			name:   "curie without href",
+			inst:   New(),
+			target: &StaticUser{},
+			links:  []Link{{Rel: "curies", Name: "acme"}},
+			want:   "invalid CURIE declaration",
+		},
+		{
+			name:   "duplicate curie",
+			inst:   New(),
+			target: &StaticUser{},
+			links: []Link{
+				{Rel: "curies", Name: "acme", Href: "https://example.com/a/{rel}"},
+				{Rel: "curies", Name: "acme", Href: "https://example.com/b/{rel}"},
+			},
+			want: "duplicate CURIE declaration",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assertPanics(t, "hal: RegisterStatic: ", func() {
+				RegisterStatic(tc.inst, tc.target, tc.links)
+			})
+			assertPanics(t, tc.want, func() {
+				RegisterStatic(tc.inst, tc.target, tc.links)
+			})
+		})
+	}
+}
+
+func TestRegisterStatic_AcceptsTypedNilTarget(t *testing.T) {
+	inst := New()
+	RegisterStatic(inst, (*StaticUser)(nil), []Link{{Rel: "self", Href: "/users"}})
+
+	env := inst.Wrap(context.Background(), &StaticUser{ID: 1})
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertJSONEqual(t, b, []byte(`{"id":1,"name":"","_links":{"self":{"href":"/users"}}}`))
+}
+
+func TestRegisterStatic_EmptyLinksSuppressGenerators(t *testing.T) {
+	inst := New()
+	RegisterInstance(inst, func(_ context.Context, _ *StaticUser) []Link {
+		return []Link{{Rel: "ignored", Href: "/generated"}}
+	})
+	RegisterStatic(inst, &StaticUser{}, nil)
+
+	env := inst.Wrap(context.Background(), &StaticUser{ID: 1})
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertJSONEqual(t, b, []byte(`{"id":1,"name":""}`))
+	assertNoDuplicateKeys(t, b)
+}
+
+func TestRegisterStatic_SingleCurieBecomesArray(t *testing.T) {
+	inst := New()
+	RegisterStatic(inst, &StaticUser{}, []Link{
+		{Rel: "curies", Name: "acme", Href: "https://example.com/{rel}", Templated: true},
+		{Rel: "acme:widget", Href: "/widgets/1"},
+	})
+
+	env := inst.Wrap(context.Background(), &StaticUser{ID: 1})
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNoDuplicateKeys(t, b)
+
+	root, ok := decodeJSONValue(t, b).(map[string]any)
+	if !ok {
+		t.Fatal("document is not an object")
+	}
+	links, ok := root["_links"].(map[string]any)
+	if !ok {
+		t.Fatalf("_links has type %T, want object", root["_links"])
+	}
+	curies, ok := links["curies"].([]any)
+	if !ok {
+		t.Fatalf("curies has type %T, want array", links["curies"])
+	}
+	if len(curies) != 1 {
+		t.Fatalf("got %d curies, want 1", len(curies))
+	}
+}
+
 func TestRegisterStatic_DifferentTypes(t *testing.T) {
 	inst := New()
 

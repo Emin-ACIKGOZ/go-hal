@@ -162,30 +162,76 @@ func RegisterInstance[T any](i *Instance, gen func(context.Context, *T) []Link) 
 //	// At runtime - uses pre-computed links automatically
 //	env := inst.Wrap(ctx, &User{ID: 42})
 func RegisterStatic(i *Instance, target any, links []Link) {
-	targetType := reflect.TypeOf(target)
+	targetType := validateStaticTarget(i, target)
+	pre := compileStaticLinks(links)
 
-	// Pre-serialize links JSON once, preserving repeated relations as arrays.
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.precomputed[targetType] = pre
+}
+
+func validateStaticTarget(i *Instance, target any) reflect.Type {
+	if i == nil {
+		panic("hal: RegisterStatic: instance must not be nil")
+	}
+	targetType := reflect.TypeOf(target)
+	if targetType == nil {
+		panic("hal: RegisterStatic: target must not be nil")
+	}
+	if targetType.Kind() != reflect.Pointer {
+		panic(fmt.Sprintf("hal: RegisterStatic: target must be a pointer, got %s", targetType))
+	}
+	return targetType
+}
+
+func compileStaticLinks(links []Link) *PrecomputedLinks {
+	var curies []Link
 	linksMap := make(map[string]any, len(links))
 	for _, l := range links {
+		if strings.TrimSpace(l.Rel) == "" {
+			panic("hal: RegisterStatic: link relation must not be empty")
+		}
+		if l.Rel == relCuries {
+			curies = append(curies, l)
+		}
 		appendLinkValue(linksMap, l.Rel, l)
 	}
-	linksJSON, _ := json.Marshal(linksMap)
+	if err := validateCurieDeclarations(curies); err != nil {
+		panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
+	}
+	normalizeStaticCuries(linksMap)
 
-	// Wrap in _links object for easy splice
+	pre := &PrecomputedLinks{
+		prefixes:  linkRelationPrefixes(links),
+		validated: true,
+	}
+	if len(links) > 0 {
+		pre.JSON = wrapStaticLinks(linksMap)
+	}
+	return pre
+}
+
+func normalizeStaticCuries(linksMap map[string]any) {
+	value, ok := linksMap[relCuries]
+	if !ok {
+		return
+	}
+	if _, isArray := value.([]any); !isArray {
+		linksMap[relCuries] = []any{value}
+	}
+}
+
+func wrapStaticLinks(linksMap map[string]any) []byte {
+	linksJSON, err := json.Marshal(linksMap)
+	if err != nil {
+		panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
+	}
 	fullJSON := make([]byte, 0, len(linksJSON)+precomputedLinksWrapperLen+precomputedLinksPrefixLen)
 	fullJSON = append(fullJSON, `{`...)
 	fullJSON = append(fullJSON, `"`+fieldLinks+`":`...)
 	fullJSON = append(fullJSON, linksJSON...)
 	fullJSON = append(fullJSON, `}`...)
-
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	// Store as precomputed for this type
-	i.precomputed[targetType] = &PrecomputedLinks{
-		JSON:      fullJSON,
-		prefixes:  linkRelationPrefixes(links),
-		validated: true,
-	}
+	return fullJSON
 }
 
 // PrecomputedLinks holds validated, wrapped pre-serialized links JSON.
