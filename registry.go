@@ -272,6 +272,9 @@ func normalizePrecomputedLinks(linksJSON []byte) ([]byte, error) {
 	if len(linksJSON) == 0 {
 		return nil, nil
 	}
+	if err := findDuplicateJSONKeys(linksJSON); err != nil {
+		return nil, fmt.Errorf("hal: precomputed links contain duplicate JSON keys: %w", err)
+	}
 
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(linksJSON, &fields); err != nil {

@@ -165,66 +165,7 @@ func requireExactKeys(t *testing.T, obj map[string]json.RawMessage, keys ...stri
 // Duplicate names are non-interoperable JSON and cannot be detected by decoding
 // into a map.
 func findDuplicateKeys(data []byte) error {
-	dec := json.NewDecoder(bytes.NewReader(data))
-
-	type frame struct {
-		object  bool
-		keys    map[string]struct{}
-		wantKey bool
-	}
-	var stack []frame
-
-	for {
-		tok, err := dec.Token()
-		if errors.Is(err, io.EOF) {
-			if len(stack) != 0 {
-				return errors.New("unexpected EOF")
-			}
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-
-		if delim, ok := tok.(json.Delim); ok {
-			switch delim {
-			case '{':
-				stack = append(stack, frame{
-					object:  true,
-					keys:    make(map[string]struct{}),
-					wantKey: true,
-				})
-			case '[':
-				stack = append(stack, frame{})
-			case '}', ']':
-				if len(stack) == 0 {
-					return errors.New("unbalanced closing delimiter")
-				}
-				stack = stack[:len(stack)-1]
-				if n := len(stack); n > 0 && stack[n-1].object {
-					stack[n-1].wantKey = true
-				}
-			}
-			continue
-		}
-
-		if n := len(stack); n > 0 && stack[n-1].object {
-			top := &stack[n-1]
-			if top.wantKey {
-				key, ok := tok.(string)
-				if !ok {
-					return fmt.Errorf("object key has type %T, want string", tok)
-				}
-				if _, exists := top.keys[key]; exists {
-					return fmt.Errorf("duplicate object key %q", key)
-				}
-				top.keys[key] = struct{}{}
-				top.wantKey = false
-			} else {
-				top.wantKey = true
-			}
-		}
-	}
+	return findDuplicateJSONKeys(data)
 }
 
 func assertNoDuplicateKeys(t *testing.T, data []byte) {

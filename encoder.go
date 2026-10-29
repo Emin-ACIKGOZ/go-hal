@@ -9,6 +9,7 @@ import (
 	stdjson "encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 
 	json "github.com/goccy/go-json"
@@ -131,6 +132,72 @@ func checkJSONStructure(b []byte) (bool, bool, error) {
 	}
 
 	return false, false, nil
+}
+
+// findDuplicateJSONKeys scans for duplicate object member names at any depth.
+// Duplicate names are non-interoperable and cannot be detected after decoding
+// into a map.
+func findDuplicateJSONKeys(data []byte) error {
+	dec := stdjson.NewDecoder(bytes.NewReader(data))
+
+	type frame struct {
+		object  bool
+		keys    map[string]struct{}
+		wantKey bool
+	}
+	var stack []frame
+
+	for {
+		tok, err := dec.Token()
+		if errors.Is(err, io.EOF) {
+			if len(stack) != 0 {
+				return errors.New("unexpected EOF")
+			}
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		if delim, ok := tok.(stdjson.Delim); ok {
+			switch delim {
+			case '{':
+				stack = append(stack, frame{
+					object:  true,
+					keys:    make(map[string]struct{}),
+					wantKey: true,
+				})
+			case '[':
+				stack = append(stack, frame{})
+			case '}', ']':
+				if len(stack) == 0 {
+					return errors.New("unbalanced closing delimiter")
+				}
+				stack = stack[:len(stack)-1]
+				if n := len(stack); n > 0 && stack[n-1].object {
+					stack[n-1].wantKey = true
+				}
+			}
+			continue
+		}
+
+		if n := len(stack); n > 0 && stack[n-1].object {
+			top := &stack[n-1]
+			if top.wantKey {
+				key, ok := tok.(string)
+				if !ok {
+					return fmt.Errorf("object key has type %T, want string", tok)
+				}
+				if _, exists := top.keys[key]; exists {
+					return fmt.Errorf("duplicate object key %q", key)
+				}
+				top.keys[key] = struct{}{}
+				top.wantKey = false
+			} else {
+				top.wantKey = true
+			}
+		}
+	}
 }
 
 // checkReservedHALFields reports a conflict only when a reserved name appears

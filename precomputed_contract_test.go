@@ -68,6 +68,8 @@ func TestPrecomputedContract_RejectsInvalidLinks(t *testing.T) {
 		[]byte(`{"_links":null}`),
 		[]byte(`{"_links":"self"}`),
 		[]byte(`{"_links":42}`),
+		[]byte(`{"self":{"href":"/x"},"self":{"href":"/y"}}`),
+		[]byte(`{"_links":{"self":{"href":"/x","href":"/y"}}}`),
 	}
 
 	for _, links := range invalid {
