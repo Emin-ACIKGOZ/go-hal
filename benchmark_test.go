@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// TestData is the struct we'll use for benchmarks
+// TestData is the struct we'll use for benchmarks.
 type TestData struct {
 	ID    int    `json:"id"`
 	Name  string `json:"name"`
@@ -19,7 +19,7 @@ type TestData struct {
 	Age   int    `json:"age"`
 }
 
-// ManualHALResponse represents manually constructed HAL (what users would do without the library)
+// ManualHALResponse represents manually constructed HAL (what users would do without the library).
 type ManualHALResponse struct {
 	ID    int    `json:"id"`
 	Name  string `json:"name"`
@@ -32,47 +32,57 @@ type ManualHALResponse struct {
 	} `json:"_links"`
 }
 
-// init registers the HAL generator for TestData once
-func init() {
-	Register(func(_ context.Context, t *TestData) []Link {
+func newBenchmarkInstance() *Instance {
+	instance := New()
+	RegisterInstance(instance, func(_ context.Context, t *TestData) []Link {
 		return []Link{
 			{Rel: "self", Href: fmt.Sprintf("/users/%d", t.ID)},
 		}
 	})
+	return instance
+}
+
+func benchmarkData() *TestData {
+	return &TestData{
+		ID:    42,
+		Name:  "Alice Johnson",
+		Email: "alice@example.com",
+		Age:   30,
+	}
 }
 
 // --- Benchmark: go-hal ---
 
 func BenchmarkHAL_Wrap_And_Marshal(b *testing.B) {
 	ctx := context.Background()
-	data := &TestData{
-		ID:    42,
-		Name:  "Alice Johnson",
-		Email: "alice@example.com",
-		Age:   30,
-	}
+	instance := newBenchmarkInstance()
+	data := benchmarkData()
 
 	b.ResetTimer()
+	var err error
 	for i := 0; i < b.N; i++ {
-		envelope := Wrap(ctx, data)
-		_, _ = json.Marshal(envelope)
+		envelope := instance.Wrap(ctx, data)
+		_, err = json.Marshal(envelope)
+	}
+	b.StopTimer()
+	if err != nil {
+		b.Fatal(err)
 	}
 }
 
 func BenchmarkHAL_Marshal_Only(b *testing.B) {
 	ctx := context.Background()
-	data := &TestData{
-		ID:    42,
-		Name:  "Alice Johnson",
-		Email: "alice@example.com",
-		Age:   30,
-	}
-
-	envelope := Wrap(ctx, data)
+	instance := newBenchmarkInstance()
+	envelope := instance.Wrap(ctx, benchmarkData())
 
 	b.ResetTimer()
+	var err error
 	for i := 0; i < b.N; i++ {
-		_, _ = json.Marshal(envelope)
+		_, err = json.Marshal(envelope)
+	}
+	b.StopTimer()
+	if err != nil {
+		b.Fatal(err)
 	}
 }
 
@@ -80,6 +90,7 @@ func BenchmarkHAL_Marshal_Only(b *testing.B) {
 
 func BenchmarkManual_HAL(b *testing.B) {
 	b.ResetTimer()
+	var err error
 	for i := 0; i < b.N; i++ {
 		response := ManualHALResponse{
 			ID:    42,
@@ -88,23 +99,27 @@ func BenchmarkManual_HAL(b *testing.B) {
 			Age:   30,
 		}
 		response.Links.Self.Href = fmt.Sprintf("/users/%d", response.ID)
-		_, _ = json.Marshal(response)
+		_, err = json.Marshal(response)
+	}
+	b.StopTimer()
+	if err != nil {
+		b.Fatal(err)
 	}
 }
 
 // --- Benchmark: Raw data without HAL ---
 
 func BenchmarkRaw_JSON_No_HAL(b *testing.B) {
-	data := &TestData{
-		ID:    42,
-		Name:  "Alice Johnson",
-		Email: "alice@example.com",
-		Age:   30,
-	}
+	data := benchmarkData()
 
 	b.ResetTimer()
+	var err error
 	for i := 0; i < b.N; i++ {
-		_, _ = json.Marshal(data)
+		_, err = json.Marshal(data)
+	}
+	b.StopTimer()
+	if err != nil {
+		b.Fatal(err)
 	}
 }
 
@@ -114,24 +129,24 @@ func BenchmarkReflection_Based_HAL(b *testing.B) {
 	ctx := context.Background()
 	instance := New()
 
-	// Register using reflection (the old way that's slower)
+	// Register using reflection (the old way that's slower).
 	instance.RegisterInstance(func(_ context.Context, t *TestData) []Link {
 		return []Link{
 			{Rel: "self", Href: fmt.Sprintf("/users/%d", t.ID)},
 		}
 	})
 
-	data := &TestData{
-		ID:    42,
-		Name:  "Alice Johnson",
-		Email: "alice@example.com",
-		Age:   30,
-	}
+	data := benchmarkData()
 
 	b.ResetTimer()
+	var err error
 	for i := 0; i < b.N; i++ {
 		envelope := instance.Wrap(ctx, data)
-		_, _ = json.Marshal(envelope)
+		_, err = json.Marshal(envelope)
+	}
+	b.StopTimer()
+	if err != nil {
+		b.Fatal(err)
 	}
 }
 
@@ -141,7 +156,7 @@ func BenchmarkHAL_Multiple_Links(b *testing.B) {
 	ctx := context.Background()
 	instance := New()
 
-	instance.RegisterInstance(func(_ context.Context, t *TestData) []Link {
+	RegisterInstance(instance, func(_ context.Context, t *TestData) []Link {
 		return []Link{
 			{Rel: "self", Href: fmt.Sprintf("/users/%d", t.ID)},
 			{Rel: "edit", Href: fmt.Sprintf("/users/%d/edit", t.ID)},
@@ -150,17 +165,17 @@ func BenchmarkHAL_Multiple_Links(b *testing.B) {
 		}
 	})
 
-	data := &TestData{
-		ID:    42,
-		Name:  "Alice Johnson",
-		Email: "alice@example.com",
-		Age:   30,
-	}
+	data := benchmarkData()
 
 	b.ResetTimer()
+	var err error
 	for i := 0; i < b.N; i++ {
 		envelope := instance.Wrap(ctx, data)
-		_, _ = json.Marshal(envelope)
+		_, err = json.Marshal(envelope)
+	}
+	b.StopTimer()
+	if err != nil {
+		b.Fatal(err)
 	}
 }
 
@@ -188,6 +203,7 @@ func BenchmarkManual_Multiple_Links(b *testing.B) {
 	}
 
 	b.ResetTimer()
+	var err error
 	for i := 0; i < b.N; i++ {
 		response := ManualResponse{
 			ID:    42,
@@ -200,7 +216,11 @@ func BenchmarkManual_Multiple_Links(b *testing.B) {
 		response.Links.Delete.Href = fmt.Sprintf("/users/%d", response.ID)
 		response.Links.Delete.Method = "DELETE"
 		response.Links.List.Href = "/users"
-		_, _ = json.Marshal(response)
+		_, err = json.Marshal(response)
+	}
+	b.StopTimer()
+	if err != nil {
+		b.Fatal(err)
 	}
 }
 
@@ -208,76 +228,20 @@ func BenchmarkManual_Multiple_Links(b *testing.B) {
 
 func BenchmarkByteBuffer_Encoder(b *testing.B) {
 	ctx := context.Background()
-	instance := New()
-
-	instance.RegisterInstance(func(_ context.Context, t *TestData) []Link {
-		return []Link{
-			{Rel: "self", Href: fmt.Sprintf("/users/%d", t.ID)},
-		}
-	})
-
-	data := &TestData{
-		ID:    42,
-		Name:  "Alice Johnson",
-		Email: "alice@example.com",
-		Age:   30,
-	}
+	instance := newBenchmarkInstance()
+	data := benchmarkData()
 
 	b.ResetTimer()
+	var err error
 	for i := 0; i < b.N; i++ {
 		envelope := instance.Wrap(ctx, data)
 		var buf bytes.Buffer
 		enc := json.NewEncoder(&buf)
-		_ = enc.Encode(envelope)
+		err = enc.Encode(envelope)
 	}
-}
-
-// --- Memory allocation benchmarks (allocs/op) ---
-
-func BenchmarkAllocs_HAL_Wrap_And_Marshal(b *testing.B) {
-	ctx := context.Background()
-	data := &TestData{
-		ID:    42,
-		Name:  "Alice Johnson",
-		Email: "alice@example.com",
-		Age:   30,
-	}
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		envelope := Wrap(ctx, data)
-		_, _ = json.Marshal(envelope)
-	}
-}
-
-func BenchmarkAllocs_Manual_HAL(b *testing.B) {
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		response := ManualHALResponse{
-			ID:    42,
-			Name:  "Alice Johnson",
-			Email: "alice@example.com",
-			Age:   30,
-		}
-		response.Links.Self.Href = fmt.Sprintf("/users/%d", response.ID)
-		_, _ = json.Marshal(response)
-	}
-}
-
-func BenchmarkAllocs_Raw_JSON(b *testing.B) {
-	data := &TestData{
-		ID:    42,
-		Name:  "Alice Johnson",
-		Email: "alice@example.com",
-		Age:   30,
-	}
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = json.Marshal(data)
+	b.StopTimer()
+	if err != nil {
+		b.Fatal(err)
 	}
 }
 
@@ -285,15 +249,9 @@ func BenchmarkAllocs_Raw_JSON(b *testing.B) {
 
 func BenchmarkHAL_Large_Collection(b *testing.B) {
 	ctx := context.Background()
-	instance := New()
+	instance := newBenchmarkInstance()
 
-	instance.RegisterInstance(func(_ context.Context, t *TestData) []Link {
-		return []Link{
-			{Rel: "self", Href: fmt.Sprintf("/users/%d", t.ID)},
-		}
-	})
-
-	// Simulate a collection with many items
+	// Simulate a collection with many items.
 	collection := make([]*TestData, 100)
 	for i := 0; i < 100; i++ {
 		collection[i] = &TestData{
@@ -305,12 +263,17 @@ func BenchmarkHAL_Large_Collection(b *testing.B) {
 	}
 
 	b.ResetTimer()
+	var err error
 	for i := 0; i < b.N; i++ {
-		// Marshal each item separately (typical REST API pattern)
+		// Marshal each item separately (typical REST API pattern).
 		for _, item := range collection {
 			envelope := instance.Wrap(ctx, item)
-			_, _ = json.Marshal(envelope)
+			_, err = json.Marshal(envelope)
 		}
+	}
+	b.StopTimer()
+	if err != nil {
+		b.Fatal(err)
 	}
 }
 
@@ -326,6 +289,7 @@ func BenchmarkManual_Large_Collection(b *testing.B) {
 	}
 
 	b.ResetTimer()
+	var err error
 	for i := 0; i < b.N; i++ {
 		for _, item := range collection {
 			response := ManualHALResponse{
@@ -335,7 +299,53 @@ func BenchmarkManual_Large_Collection(b *testing.B) {
 				Age:   item.Age,
 			}
 			response.Links.Self.Href = fmt.Sprintf("/users/%d", item.ID)
-			_, _ = json.Marshal(response)
+			_, err = json.Marshal(response)
 		}
+	}
+	b.StopTimer()
+	if err != nil {
+		b.Fatal(err)
+	}
+}
+
+// --- Benchmark: Pre-serialized links ---
+
+func BenchmarkWrapPrecomputed(b *testing.B) {
+	inst := New()
+	ctx := context.Background()
+	u := benchmarkData()
+
+	// Raw link relations are normalized to {"_links": ...} by WrapPrecomputed.
+	linksJSON := []byte(`{"self":{"href":"/users/42"}}`)
+
+	b.ResetTimer()
+	var err error
+	for i := 0; i < b.N; i++ {
+		env := inst.WrapPrecomputed(ctx, u, linksJSON)
+		_, err = json.Marshal(env)
+	}
+	b.StopTimer()
+	if err != nil {
+		b.Fatal(err)
+	}
+}
+
+func BenchmarkRegisterStatic(b *testing.B) {
+	inst := New()
+	ctx := context.Background()
+
+	RegisterStatic(inst, &TestData{}, []Link{{Rel: "self", Href: "/users/42"}})
+
+	u := benchmarkData()
+
+	b.ResetTimer()
+	var err error
+	for i := 0; i < b.N; i++ {
+		env := inst.Wrap(ctx, u) // Uses auto-detected precomputed links.
+		_, err = json.Marshal(env)
+	}
+	b.StopTimer()
+	if err != nil {
+		b.Fatal(err)
 	}
 }
