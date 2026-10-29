@@ -24,17 +24,25 @@ func New(doc *openapi3.T) *Adapter {
 
 // InjectLinkSchema adds the standard HAL Link object definition to Components.Schemas.
 // It must be called before creating HAL resources to ensure the $ref exists.
+// An existing custom Link schema is preserved.
 func (a *Adapter) InjectLinkSchema() {
-	// Defensive fix: initialize Components if nil
+	if a == nil || a.doc == nil {
+		return
+	}
 	if a.doc.Components == nil {
 		a.doc.Components = &openapi3.Components{}
 	}
-
 	if a.doc.Components.Schemas == nil {
 		a.doc.Components.Schemas = make(openapi3.Schemas)
 	}
+	if link, ok := a.doc.Components.Schemas[LinkSchemaName]; ok && link != nil {
+		return
+	}
+	a.doc.Components.Schemas[LinkSchemaName] =
+		openapi3.NewSchemaRef("", newLinkSchema())
+}
 
-	// Define the HAL Link Schema
+func newLinkSchema() *openapi3.Schema {
 	linkSchema := openapi3.NewObjectSchema().
 		WithProperty("href", openapi3.NewStringSchema()).
 		WithProperty("templated", openapi3.NewBoolSchema()).
@@ -46,37 +54,29 @@ func (a *Adapter) InjectLinkSchema() {
 		WithProperty("hreflang", openapi3.NewStringSchema()).
 		WithProperty("method", openapi3.NewStringSchema()) // Hint
 	linkSchema.Required = []string{"href"}
-
-	a.doc.Components.Schemas[LinkSchemaName] =
-		openapi3.NewSchemaRef("", linkSchema)
+	return linkSchema
 }
 
 // MakeResource augments a schema to include HAL fields (_links, _embedded).
 // It modifies the schema in place to allow existing properties (the "Data")
 // to coexist with HAL fields.
 func (a *Adapter) MakeResource(schema *openapi3.Schema) {
+	if schema == nil {
+		return
+	}
 	if schema.Properties == nil {
 		schema.Properties = make(openapi3.Schemas)
 	}
-
-	// Resolve the Link schema value alongside the $ref so the generated
-	// document can be validated without a separate loader pass.
-	var linkValue *openapi3.Schema
-	if linkRef, ok := a.doc.Components.Schemas[LinkSchemaName]; ok && linkRef != nil {
-		linkValue = linkRef.Value
-	}
-	linkRef := func() *openapi3.SchemaRef {
-		return openapi3.NewSchemaRef("#/components/schemas/"+LinkSchemaName, linkValue)
-	}
+	linkRef := a.linkSchemaRef()
 
 	// 1. Add _links
 	oneOfSchema := &openapi3.Schema{
 		OneOf: []*openapi3.SchemaRef{
-			linkRef(),
+			linkRef,
 			{
 				Value: &openapi3.Schema{
 					Type:  &openapi3.Types{openapi3.TypeArray},
-					Items: linkRef(),
+					Items: a.linkSchemaRef(),
 				},
 			},
 		},
@@ -98,6 +98,18 @@ func (a *Adapter) MakeResource(schema *openapi3.Schema) {
 	schema.Properties["_embedded"] = openapi3.NewSchemaRef("", embeddedSchema)
 }
 
+// linkSchemaRef returns a reference to the adapter document's Link schema. When
+// there is no document to hold components, it inlines the standard schema.
+func (a *Adapter) linkSchemaRef() *openapi3.SchemaRef {
+	if a != nil && a.doc != nil {
+		a.InjectLinkSchema()
+		if link, ok := a.doc.Components.Schemas[LinkSchemaName]; ok && link != nil {
+			return openapi3.NewSchemaRef("#/components/schemas/"+LinkSchemaName, link.Value)
+		}
+	}
+	return openapi3.NewSchemaRef("", newLinkSchema())
+}
+
 // MakeCollection creates a new HAL Collection Schema wrapping the provided item schema.
 // It returns a standard structure:
 //
@@ -115,15 +127,29 @@ func (a *Adapter) MakeCollection(itemSchemaRef *openapi3.SchemaRef) *openapi3.Sc
 
 	// Explicitly define the standard "_embedded.items" list
 	embeddedItems := openapi3.NewObjectSchema()
+	embeddedItems.ReadOnly = true
 	itemsArray := &openapi3.Schema{
 		Type:  &openapi3.Types{openapi3.TypeArray},
-		Items: itemSchemaRef,
+		Items: normalizeItemSchemaRef(itemSchemaRef),
 	}
 	embeddedItems.WithProperty("items", itemsArray)
 
 	collection.Properties["_embedded"] = openapi3.NewSchemaRef("", embeddedItems)
-	collection.WithProperty("count", openapi3.NewIntegerSchema())
-	collection.WithProperty("total", openapi3.NewIntegerSchema())
+	collection.WithProperty("count", readOnlyIntegerSchema())
+	collection.WithProperty("total", readOnlyIntegerSchema())
 
 	return collection
+}
+
+func normalizeItemSchemaRef(ref *openapi3.SchemaRef) *openapi3.SchemaRef {
+	if ref == nil || (ref.Ref == "" && ref.Value == nil) {
+		return openapi3.NewSchemaRef("", openapi3.NewObjectSchema())
+	}
+	return ref
+}
+
+func readOnlyIntegerSchema() *openapi3.Schema {
+	schema := openapi3.NewIntegerSchema()
+	schema.ReadOnly = true
+	return schema
 }

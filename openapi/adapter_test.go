@@ -29,6 +29,41 @@ func TestInjectLinkSchema(t *testing.T) {
 	}
 }
 
+func TestNilDocumentIsSafe(t *testing.T) {
+	a := New(nil)
+	a.InjectLinkSchema()
+	a.MakeResource(nil)
+	a.MakeResource(openapi3.NewObjectSchema())
+
+	schema := openapi3.NewObjectSchema()
+	a.MakeResource(schema)
+	links := schema.Properties["_links"].Value
+	value := links.AdditionalProperties.Schema.Value
+	if value.OneOf[0].Ref != "" || value.OneOf[0].Value == nil {
+		t.Fatalf("nil document should inline the Link schema, got %#v", value.OneOf[0])
+	}
+}
+
+func TestInjectLinkSchema_PreservesCustomLink(t *testing.T) {
+	custom := openapi3.NewStringSchema()
+	doc := &openapi3.T{
+		Components: &openapi3.Components{
+			Schemas: openapi3.Schemas{
+				LinkSchemaName: openapi3.NewSchemaRef("", custom),
+			},
+		},
+	}
+	New(doc).InjectLinkSchema()
+
+	if got := doc.Components.Schemas[LinkSchemaName].Value; got != custom {
+		t.Fatal("InjectLinkSchema replaced a custom Link schema")
+	}
+}
+
+func TestMakeResource_NilSchemaIsSafe(_ *testing.T) {
+	New(&openapi3.T{}).MakeResource(nil)
+}
+
 func TestMakeResource_AddsHALFields(t *testing.T) {
 	doc := &openapi3.T{
 		Components: &openapi3.Components{
@@ -238,6 +273,34 @@ func TestMakeCollection_ShapeAndItemRef(t *testing.T) {
 	}
 	if itemsRef.Value.Items != itemRef {
 		t.Error("_embedded.items did not preserve the item schema reference")
+	}
+}
+
+func TestMakeCollection_NilAndEmptyItemRefs(t *testing.T) {
+	a := New(&openapi3.T{})
+	for _, ref := range []*openapi3.SchemaRef{
+		nil,
+		{},
+		openapi3.NewSchemaRef("", nil),
+	} {
+		collection := a.MakeCollection(ref)
+		items := collection.Properties["_embedded"].Value.Properties["items"].Value.Items
+		if items == nil || items.Value == nil {
+			t.Fatalf("items ref %#v was not normalized", ref)
+		}
+	}
+}
+
+func TestMakeCollection_HALFieldsAreReadOnly(t *testing.T) {
+	doc := &openapi3.T{}
+	a := New(doc)
+	collection := a.MakeCollection(nil)
+
+	for _, name := range []string{"_links", "_embedded", "count", "total"} {
+		property := collection.Properties[name].Value
+		if property == nil || !property.ReadOnly {
+			t.Errorf("%s ReadOnly = %v, want true", name, property)
+		}
 	}
 }
 
