@@ -55,7 +55,10 @@ func TestCurie_MultiplePrefixes(t *testing.T) {
 	})
 
 	env := inst.Wrap(context.Background(), &CurieUser{})
-	b, _ := json.Marshal(env)
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var result map[string]any
 	if err := json.Unmarshal(b, &result); err != nil {

@@ -32,11 +32,3 @@ func TestSplicePrecomputed_BothPresent(t *testing.T) {
 	result := splicePrecomputed(data, links)
 	assertJSONEqual(t, result, []byte(`{"id":1,"_links":{"self":{}}}`))
 }
-
-func TestSplicePrecomputed_DataWithLinks(t *testing.T) {
-	data := []byte(`{"id":1}`)
-	links := []byte(`{"_links":{"self":{}}}`)
-
-	result := splicePrecomputed(data, links)
-	assertJSONEqual(t, result, []byte(`{"id":1,"_links":{"self":{}}}`))
-}

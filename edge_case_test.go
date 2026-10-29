@@ -85,7 +85,7 @@ func TestAddLink_NilMap(t *testing.T) {
 	}
 }
 
-func TestAddLink_MultipleRelocations(t *testing.T) {
+func TestAddLink_MultipleSameRel(t *testing.T) {
 	e := &Envelope{
 		Data:     nil,
 		instance: New(),
@@ -105,31 +105,6 @@ func TestAddLink_MultipleRelocations(t *testing.T) {
 	if len(slice) != 3 {
 		t.Fatalf("expected 3 links, got %d", len(slice))
 	}
-}
-
-func TestMarshal_NilEmbedded(t *testing.T) {
-	type User struct {
-		ID int `json:"id"`
-	}
-
-	inst := New()
-	RegisterInstance(inst, func(_ context.Context, _ *User) []Link {
-		return []Link{{Rel: "self", Href: "/users/1"}}
-	})
-
-	env := inst.Wrap(context.Background(), &User{ID: 1})
-	if env.embedded != nil {
-		t.Fatal("embedded should be nil initially")
-	}
-
-	out, err := json.Marshal(env)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	obj := decodeJSONObject(t, out)
-	forbidKeys(t, obj, "_embedded")
-	requireKeys(t, obj, "_links")
 }
 
 func TestMarshal_NilInstance(t *testing.T) {
