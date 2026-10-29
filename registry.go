@@ -324,7 +324,8 @@ func normalizeWrappedPrecomputedLinks(
 	if err := validatePrecomputedLinkRelations(links); err != nil {
 		return nil, err
 	}
-	return linksJSON, nil
+	// Own the wrapped form too: callers may reuse or mutate their buffer.
+	return bytes.Clone(linksJSON), nil
 }
 
 func wrapPrecomputedLinks(linksJSON []byte) []byte {

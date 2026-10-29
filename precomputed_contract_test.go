@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -297,6 +298,52 @@ func TestPrecomputedContract_RejectsInvalidUTF8Data(t *testing.T) {
 	if len(b) != 0 {
 		t.Fatalf("error returned partial output: %s", b)
 	}
+}
+
+func TestPrecomputedContract_OwnsInputBytes(t *testing.T) {
+	want := []byte(`{"id":1,"_links":{"self":{"href":"/original"}}}`)
+	inputs := [][]byte{
+		[]byte(`{"self":{"href":"/original"}}`),
+		[]byte(`{"_links":{"self":{"href":"/original"}}}`),
+	}
+	for _, input := range inputs {
+		t.Run(string(input), func(t *testing.T) {
+			env := New().WrapPrecomputed(context.Background(), map[string]any{"id": 1}, input)
+			for i := range input {
+				input[i] = 'x'
+			}
+
+			b, err := json.Marshal(env)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertJSONEqual(t, b, want)
+		})
+	}
+}
+
+func TestPrecomputedContract_InputMutationIsConcurrencySafe(t *testing.T) {
+	input := []byte(`{"_links":{"self":{"href":"/original"}}}`)
+	env := New().WrapPrecomputed(context.Background(), map[string]any{"id": 1}, input)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			input[i%len(input)] = 'x'
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			if _, err := json.Marshal(env); err != nil {
+				t.Errorf("marshal: %v", err)
+				return
+			}
+		}
+	}()
+	wg.Wait()
 }
 
 func TestPrecomputedContract_NullDataUsesLinksOnly(t *testing.T) {
