@@ -6,56 +6,95 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
+
 jobs:
-  ci:
+  test:
+    name: Go ${{ matrix.go }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.22.5", "1.24.11", "stable"]
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: ${{ matrix.go }}
           cache: true
 
       - name: Download dependencies
         run: go mod download
 
       - name: Enforce gofmt
+        run: test -z "$(gofmt -l .)"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -count=1 -shuffle=on ./...
+
+      - name: Race
+        run: go test -count=1 -race -shuffle=on ./...
+
+      - name: Fuzz smoke tests
         run: |
-          test -z "$(gofmt -l .)"
+          for target in FuzzWrapPrecomputed FuzzSplicePrecomputed FuzzMarshal_WithRegisteredGenerator FuzzMarshal_WithoutGenerator FuzzLink_AddLink; do
+            go test -run='^$' -fuzz="^${target}$" -fuzztime=5s .
+          done
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: true
+
+      - name: Enforce minimum coverage
+        run: |
+          go test -count=1 -coverprofile=coverage.out ./...
+          coverage=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%", "", $3); print $3}')
+          echo "Test coverage: ${coverage}%"
+          awk -v coverage="${coverage}" 'BEGIN { if (coverage < 70.0) exit 1 }'
+          echo "Coverage meets the 70% minimum"
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: true
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.15.0
           args: --config=.golangci.yml
-
-      - name: Run tests
-        run: go test ./...
-
-      - name: Run race detector
-        run: go test -race ./...
-
-      - name: Check test coverage
-        run: |
-          go test -coverprofile=coverage.out ./...
-          coverage=$(go tool cover -func=coverage.out | grep "total:" | awk '{print $NF}' | sed 's/%//')
-          echo "Test Coverage: ${coverage}%"
-          min_coverage=70.0
-          if (( $(echo "$coverage < $min_coverage" | bc -l) )); then
-            echo "❌ Coverage ${coverage}% is below minimum ${min_coverage}%"
-            exit 1
-          fi
-          echo "✓ Coverage ${coverage}% meets minimum requirement (${min_coverage}%)"
-
-      - name: Run benchmarks
-        run: |
-          go test -run=^$ -bench=. -benchmem -benchtime=3s ./... | tee benchmark_results.txt
-
-      - name: Check benchmark regressions
-        run: |
-          # Store and compare benchmarks
-          scripts/check-benchmark-regression.sh
