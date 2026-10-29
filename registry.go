@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sort"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -348,7 +347,12 @@ func (i *Instance) wrapPrecomputedHandle(data any, links *PrecomputedLinks) *Env
 	case !links.validated:
 		e.err = errPrecomputedUnvalidated
 	default:
-		e.precomputedJSON = links.JSON
+		resolved, err := i.resolvePrecomputedLinks(links)
+		if err != nil {
+			e.err = err
+		} else {
+			e.precomputedJSON = resolved
+		}
 	}
 	return e
 }
@@ -612,40 +616,79 @@ func (i *Instance) RegisteredTypes() []reflect.Type {
 }
 
 func (i *Instance) resolveCuries(links map[string]any) []Link {
+	return i.curieDeclarations(anyRelationPrefixes(links))
+}
+
+// curieDeclarations returns generated declarations for registered prefixes.
+// The returned order follows the sorted input prefixes.
+func (i *Instance) curieDeclarations(prefixes []string) []Link {
+	if i == nil || len(prefixes) == 0 {
+		return nil
+	}
+
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
-	if len(i.curies) == 0 || len(links) == 0 {
-		return nil
-	}
-
-	used := make(map[string]struct{})
-	for rel := range links {
-		if idx := strings.IndexByte(rel, ':'); idx > 0 {
-			prefix := rel[:idx]
-			if _, ok := i.curies[prefix]; ok {
-				used[prefix] = struct{}{}
-			}
+	declarations := make([]Link, 0, len(prefixes))
+	for _, name := range prefixes {
+		href, ok := i.curies[name]
+		if !ok {
+			continue
 		}
-	}
-	if len(used) == 0 {
-		return nil
-	}
-
-	names := make([]string, 0, len(used))
-	for name := range used {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	curies := make([]Link, 0, len(names))
-	for _, name := range names {
-		curies = append(curies, Link{
+		declarations = append(declarations, Link{
 			Rel:       relCuries,
 			Name:      name,
-			Href:      i.curies[name],
+			Href:      href,
 			Templated: true,
 		})
 	}
-	return curies
+	return declarations
+}
+
+// resolvePrecomputedLinks merges the registered declarations for the handle's
+// relation prefixes at wrap time. Handles stay instance-independent so a late
+// registration or a different instance is reflected on the next wrap.
+func (i *Instance) resolvePrecomputedLinks(links *PrecomputedLinks) ([]byte, error) {
+	if len(links.JSON) == 0 {
+		return nil, nil
+	}
+	declarations := i.curieDeclarations(links.prefixes)
+	if len(declarations) == 0 {
+		return links.JSON, nil
+	}
+	return mergePrecomputedCuries(links.JSON, declarations)
+}
+
+func mergePrecomputedCuries(linksJSON []byte, registered []Link) ([]byte, error) {
+	var document map[string]stdjson.RawMessage
+	if err := stdjson.Unmarshal(linksJSON, &document); err != nil {
+		return nil, fmt.Errorf("hal: precomputed links must be a JSON object: %w", err)
+	}
+	var links map[string]stdjson.RawMessage
+	if err := stdjson.Unmarshal(document[fieldLinks], &links); err != nil || links == nil {
+		return nil, errors.New("hal: precomputed _links must be a JSON object")
+	}
+
+	var user []Link
+	if raw, ok := links[relCuries]; ok {
+		if err := stdjson.Unmarshal(raw, &user); err != nil {
+			return nil, fmt.Errorf("hal: precomputed curies: %w", err)
+		}
+	}
+	merged, err := mergeCuries(user, registered)
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := json.Marshal(merged)
+	if err != nil {
+		return nil, err
+	}
+	links[relCuries] = encoded
+
+	encodedLinks, err := json.Marshal(links)
+	if err != nil {
+		return nil, err
+	}
+	document[fieldLinks] = encodedLinks
+	return json.Marshal(document)
 }

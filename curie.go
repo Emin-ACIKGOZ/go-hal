@@ -61,6 +61,16 @@ func rawRelationPrefixes(links map[string]stdjson.RawMessage) []string {
 	return sortedPrefixSet(set)
 }
 
+func anyRelationPrefixes(links map[string]any) []string {
+	set := make(map[string]struct{}, len(links))
+	for rel := range links {
+		if prefix, ok := relationPrefix(rel); ok {
+			set[prefix] = struct{}{}
+		}
+	}
+	return sortedPrefixSet(set)
+}
+
 func validateCurieDeclarations(declarations []Link) error {
 	seen := make(map[string]struct{}, len(declarations))
 	for _, declaration := range declarations {
