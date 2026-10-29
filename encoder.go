@@ -271,12 +271,20 @@ func checkReservedHALFields(data []byte) error {
 			return err
 		}
 	}
+	if _, err := dec.Token(); err != nil {
+		return fmt.Errorf("hal: inspect data object end: %w", err)
+	}
+	var trailing stdjson.RawMessage
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return errors.New("hal: data must contain exactly one JSON object")
+	}
 	return nil
 }
 
 func mayContainReservedHALField(data []byte) bool {
 	return bytes.Contains(data, []byte(fieldLinks)) ||
-		bytes.Contains(data, []byte(fieldEmbedded))
+		bytes.Contains(data, []byte(fieldEmbedded)) ||
+		bytes.Contains(data, []byte(`\u`))
 }
 
 func isReservedHALField(key string) bool {

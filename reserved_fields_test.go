@@ -75,6 +75,70 @@ func TestReservedFieldsContract_RejectsTopLevelConflict(t *testing.T) {
 	}
 }
 
+func TestReservedFieldsContract_RejectsEscapedKeys(t *testing.T) {
+	cases := []struct {
+		name string
+		data string
+	}{
+		{name: "lowercase hex", data: `{"\u005flinks":{}}`},
+		{name: "uppercase hex", data: `{"\u005Flinks":{}}`},
+		{name: "escaped embedded", data: `{"\u005fembedded":{}}`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := checkReservedHALFields([]byte(tc.data)); !errors.Is(err, ErrHALFieldConflict) {
+				t.Fatalf("checkReservedHALFields() = %v, want ErrHALFieldConflict", err)
+			}
+
+			b, err := json.Marshal(New().WrapRaw(json.RawMessage(tc.data)))
+			if !errors.Is(err, ErrHALFieldConflict) {
+				t.Fatalf("marshal error = %v (output %s), want ErrHALFieldConflict", err, b)
+			}
+			if len(b) != 0 {
+				t.Fatalf("conflict returned partial output: %s", b)
+			}
+		})
+	}
+}
+
+func TestReservedFieldsContract_AllowsNonConflictingEscapes(t *testing.T) {
+	cases := []struct {
+		name string
+		data string
+	}{
+		{name: "nested reserved", data: `{"nested":{"\u005flinks":{}}}`},
+		{name: "escaped backslash", data: `{"\\u005flinks":1}`},
+		{name: "prefixed name", data: `{"x_links":1}`},
+		{name: "string value", data: `{"value":"_links"}`},
+		{name: "escaped string value", data: `{"value":"\u005flinks"}`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := checkReservedHALFields([]byte(tc.data)); err != nil {
+				t.Fatalf("unexpected conflict: %v", err)
+			}
+
+			b, err := json.Marshal(New().WrapRaw(json.RawMessage(tc.data)))
+			if err != nil {
+				t.Fatalf("marshal failed: %v", err)
+			}
+			assertJSONEqual(t, b, []byte(tc.data))
+		})
+	}
+}
+
+func TestReservedFieldsContract_RejectsTrailingData(t *testing.T) {
+	err := checkReservedHALFields([]byte(`{"id":1}{"_links":{}}`))
+	if err == nil {
+		t.Fatal("expected trailing data error")
+	}
+	if errors.Is(err, ErrHALFieldConflict) {
+		t.Fatalf("trailing data reported as field conflict: %v", err)
+	}
+}
+
 func TestReservedFieldsContract_RejectsConflictWithPrecomputedLinks(t *testing.T) {
 	data := map[string]any{
 		"id":     1,
