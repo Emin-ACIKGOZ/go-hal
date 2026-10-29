@@ -6,6 +6,7 @@ package hal
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"testing"
 	"unicode/utf8"
 )
@@ -23,7 +24,7 @@ func FuzzMarshal_WithRegisteredGenerator(f *testing.F) {
 
 		inst := New()
 		RegisterInstance(inst, func(_ context.Context, u *User) []Link {
-			return []Link{{Rel: "self", Href: "/users/" + itoa(u.ID)}}
+			return []Link{{Rel: "self", Href: "/users/" + strconv.Itoa(u.ID)}}
 		})
 
 		env := inst.Wrap(context.Background(), &User{ID: id, Name: name})
@@ -87,28 +88,4 @@ func FuzzLink_AddLink(f *testing.F) {
 			t.Fatalf("link %s not added", rel)
 		}
 	})
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	if n < 0 {
-		return "-" + uitoa(-n)
-	}
-	return uitoa(n)
-}
-
-func uitoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = '0' + byte(n%10)
-		n /= 10
-	}
-	return string(buf[i:])
 }
