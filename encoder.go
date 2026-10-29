@@ -6,12 +6,18 @@ package hal
 import (
 	"bytes"
 	"context"
+	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 
 	json "github.com/goccy/go-json"
 )
+
+// ErrHALFieldConflict is returned when user data already contains a reserved
+// top-level HAL property. Emitting those fields would create duplicate JSON
+// object keys, which are not interoperable.
+var ErrHALFieldConflict = errors.New("hal: data already contains reserved HAL field")
 
 // MarshalJSON implements the json.Marshaler interface.
 // It serializes the wrapped Data and splices in the HAL "_links" and "_embedded"
@@ -39,6 +45,9 @@ func (e *Envelope) MarshalJSON() ([]byte, error) {
 		if isDataNull || isDataEmptyObj {
 			return e.precomputedJSON, nil
 		}
+		if err := checkReservedHALFields(dataBytes); err != nil {
+			return nil, err
+		}
 		// Splice data with pre-computed links
 		return splicePrecomputed(dataBytes, e.precomputedJSON), nil
 	}
@@ -53,6 +62,14 @@ func (e *Envelope) MarshalJSON() ([]byte, error) {
 	isDataNull, isEmptyObj, err := checkJSONStructure(dataBytes)
 	if err != nil {
 		return nil, err
+	}
+
+	// Reject data that already defines reserved HAL properties; splicing
+	// would emit duplicate JSON keys.
+	if !isDataNull && !isEmptyObj {
+		if err := checkReservedHALFields(dataBytes); err != nil {
+			return nil, err
+		}
 	}
 
 	// 3. Prepare HAL metadata (_links, _embedded)
@@ -114,6 +131,45 @@ func checkJSONStructure(b []byte) (bool, bool, error) {
 	}
 
 	return false, false, nil
+}
+
+// checkReservedHALFields reports a conflict only when a reserved name appears
+// as a top-level object key. Nested state fields remain ordinary JSON.
+func checkReservedHALFields(data []byte) error {
+	// Cheap pre-check before allocating a token scanner.
+	if !bytes.Contains(data, []byte("_links")) && !bytes.Contains(data, []byte("_embedded")) {
+		return nil
+	}
+
+	dec := stdjson.NewDecoder(bytes.NewReader(data))
+	tok, err := dec.Token()
+	if err != nil {
+		return fmt.Errorf("hal: inspect data object: %w", err)
+	}
+	delim, ok := tok.(stdjson.Delim)
+	if !ok || delim != '{' {
+		return nil
+	}
+
+	for dec.More() {
+		keyToken, err := dec.Token()
+		if err != nil {
+			return fmt.Errorf("hal: inspect data object key: %w", err)
+		}
+		key, ok := keyToken.(string)
+		if !ok {
+			return fmt.Errorf("hal: data object key has type %T, want string", keyToken)
+		}
+		if key == "_links" || key == "_embedded" {
+			return fmt.Errorf("%w: %q", ErrHALFieldConflict, key)
+		}
+
+		var value stdjson.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return fmt.Errorf("hal: inspect data object value: %w", err)
+		}
+	}
+	return nil
 }
 
 func (e *Envelope) marshalMeta() ([]byte, error) {
