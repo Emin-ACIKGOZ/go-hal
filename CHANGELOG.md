@@ -50,7 +50,6 @@ All notable changes to this project are documented here. The format follows
 
 ### Notes
 
-- The recommended next release is **v1.1.0**. `version.go` is not bumped in this
-  unreleased change set.
+- Released as **v1.1.0** on 2026-10-30. `version.go` reports `v1.1.0`.
 - HAL target: `draft-kelly-json-hal-11`, an expired IETF Informational draft;
   `application/hal+json` is not an IANA-registered media type.
