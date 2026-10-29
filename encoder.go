@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"unicode/utf8"
 
 	json "github.com/goccy/go-json"
 )
@@ -46,6 +47,9 @@ func (e *Envelope) MarshalJSON() ([]byte, error) {
 		if isDataNull || isDataEmptyObj {
 			return e.precomputedJSON, nil
 		}
+		if !utf8.Valid(dataBytes) {
+			return nil, errors.New("hal: data must be valid UTF-8")
+		}
 		if err := checkReservedHALFields(dataBytes); err != nil {
 			return nil, err
 		}
@@ -63,6 +67,9 @@ func (e *Envelope) MarshalJSON() ([]byte, error) {
 	isDataNull, isEmptyObj, err := checkJSONStructure(dataBytes)
 	if err != nil {
 		return nil, err
+	}
+	if !utf8.Valid(dataBytes) {
+		return nil, errors.New("hal: data must be valid UTF-8")
 	}
 
 	// Reject data that already defines reserved HAL properties; splicing
@@ -84,12 +91,15 @@ func (e *Envelope) MarshalJSON() ([]byte, error) {
 }
 
 func splicePrecomputed(data, linksJSON []byte) []byte {
+	data = bytes.TrimSpace(data)
+	linksJSON = bytes.TrimSpace(linksJSON)
+
 	// linksJSON is already {"_links":{...}}
 	// We need to combine data and linksJSON
-	if len(data) == 0 || string(data) == "{}" || bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+	if len(data) == 0 || bytes.Equal(data, []byte("{}")) || bytes.Equal(data, []byte("null")) {
 		return linksJSON
 	}
-	if len(linksJSON) == 0 {
+	if len(linksJSON) == 0 || isEmptyJSONObject(linksJSON) {
 		return data
 	}
 	// Remove trailing } from data and , from linksJSON
@@ -98,6 +108,14 @@ func splicePrecomputed(data, linksJSON []byte) []byte {
 	result = append(result, ',')
 	result = append(result, linksJSON[1:]...)
 	return result
+}
+
+// isEmptyJSONObject reports whether b is an object containing only whitespace.
+func isEmptyJSONObject(b []byte) bool {
+	if len(b) < 2 || b[0] != '{' || b[len(b)-1] != '}' {
+		return false
+	}
+	return len(bytes.TrimSpace(b[1:len(b)-1])) == 0
 }
 
 func (e *Envelope) marshalData() ([]byte, error) {

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"strconv"
 	"testing"
 	"unicode/utf8"
@@ -157,6 +158,10 @@ func FuzzSplicePrecomputed(f *testing.F) {
 	f.Add([]byte(`not json`), []byte(`[]`))
 
 	f.Fuzz(func(t *testing.T, data, linksJSON []byte) {
+		if !utf8.Valid(data) || !utf8.Valid(linksJSON) {
+			return
+		}
+
 		out := splicePrecomputed(data, linksJSON)
 
 		dataKeys, dataObject := fuzzTopLevelObjectKeys(data)
@@ -213,6 +218,16 @@ func fuzzTopLevelObjectKeys(data []byte) (map[string]struct{}, bool) {
 		if err := dec.Decode(&skip); err != nil {
 			return nil, false
 		}
+	}
+
+	// Consume the closing brace and reject trailing data; otherwise an input
+	// like `{}0` would be mistaken for a complete object.
+	if _, err := dec.Token(); err != nil {
+		return nil, false
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); err != io.EOF {
+		return nil, false
 	}
 	return keys, true
 }

@@ -6,12 +6,14 @@ package hal
 import (
 	"bytes"
 	"context"
+	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"sort"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	json "github.com/goccy/go-json"
 )
@@ -273,6 +275,9 @@ func normalizePrecomputedLinks(linksJSON []byte) ([]byte, error) {
 	linksJSON = bytes.TrimSpace(linksJSON)
 	if len(linksJSON) == 0 {
 		return nil, nil
+	}
+	if !utf8.Valid(linksJSON) || !stdjson.Valid(linksJSON) {
+		return nil, errors.New("hal: precomputed links must be valid UTF-8 JSON")
 	}
 	if err := findDuplicateJSONKeys(linksJSON); err != nil {
 		return nil, fmt.Errorf("hal: precomputed links contain duplicate JSON keys: %w", err)

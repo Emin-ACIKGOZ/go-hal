@@ -71,6 +71,8 @@ func TestPrecomputedContract_RejectsInvalidLinks(t *testing.T) {
 		[]byte(`{"_links":42}`),
 		[]byte(`{"self":{"href":"/x"},"self":{"href":"/y"}}`),
 		[]byte(`{"_links":{"self":{"href":"/x","href":"/y"}}}`),
+		[]byte(`{"\x8c":{}}`),   // invalid JSON escape
+		[]byte("{\"\x8c\":{}}"), // invalid UTF-8
 	}
 
 	for _, links := range invalid {
@@ -120,6 +122,27 @@ func TestPrecomputedContract_RejectsNonObjectData(t *testing.T) {
 				t.Fatalf("error returned partial output: %s", b)
 			}
 		})
+	}
+}
+
+func TestPrecomputedContract_RejectsInvalidUTF8Data(t *testing.T) {
+	links := []byte(`{"self":{"href":"/x"}}`)
+	data := json.RawMessage("{\"name\":\"\x8c\"}")
+
+	b, err := marshalPrecomputed(t, data, links)
+	if err == nil {
+		t.Fatalf("expected UTF-8 error, got %s", b)
+	}
+	if len(b) != 0 {
+		t.Fatalf("error returned partial output: %s", b)
+	}
+
+	b, err = json.Marshal(New().WrapRaw(data))
+	if err == nil {
+		t.Fatalf("expected UTF-8 error for raw data, got %s", b)
+	}
+	if len(b) != 0 {
+		t.Fatalf("error returned partial output: %s", b)
 	}
 }
 
