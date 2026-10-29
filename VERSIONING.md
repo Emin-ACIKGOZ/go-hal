@@ -66,18 +66,31 @@ git push origin --tags  # Push all tags
 
 ## CI/CD Quality Gates
 
-The CI pipeline (`/.github/workflows/ci.yml`) enforces three quality checks:
+The CI pipeline (`/.github/workflows/ci.yml`) runs these gates:
 
-### 1. Test Coverage ≥ 70%
+### 1. Tests on Supported Toolchains
 
-All commits must maintain test coverage above 70%. The CI pipeline:
-- Runs all tests with coverage profiling
-- Calculates total coverage percentage
+The test matrix uses Go `1.22.5` (the repository minimum), `1.24.11`, and
+`stable` with `GOTOOLCHAIN=local`. Each job runs:
+
+- `go vet ./...`
+- `go test -count=1 -shuffle=on ./...`
+- `go test -count=1 -race -shuffle=on ./...`
+- five 5-second fuzz smoke targets
+
+### 2. Test Coverage ≥ 70%
+
+The coverage job:
+- Runs all tests with a coverage profile
+- Calculates total coverage with `awk`
 - **Fails** if coverage drops below 70%
 
-Coverage is reported per-commit in the CI output.
+### 3. Code Quality
 
-### 2. Advisory Benchmark Comparison
+- `gofmt` enforcement (code formatting)
+- `golangci-lint` v2.15.0 with `.golangci.yml`
+
+### 4. Advisory Benchmark Comparison
 
 Pull requests get an advisory benchmark comparison on the stable Go toolchain:
 
@@ -87,24 +100,28 @@ Pull requests get an advisory benchmark comparison on the stable Go toolchain:
 - The job is advisory: it does not fail the build or block a merge
 - Reviewers decide whether a measured change matters for the affected path
 
-### 3. Code Quality Checks
-
-The pipeline also runs:
-- `gofmt` enforcement (code formatting)
-- `golangci-lint` (linting)
-- Race detector (`go test -race`)
-
 ## Release Checklist
 
 When preparing a release:
 
-1. ✓ Ensure all tests pass and coverage ≥ 70%
-2. ✓ Ensure benchmarks show no regressions
-3. ✓ Update `CHANGELOG.md` (if maintained) with changes
+1. ✓ Ensure all tests, vet, race, and fuzz smoke checks pass, and coverage ≥ 70%
+2. ✓ Review the advisory benchmark comparison for unexpected regressions
+3. ✓ Update `CHANGELOG.md` with the release notes
 4. Run: `./scripts/bump-version.sh [major|minor|patch]`
 5. Review the commit and tag: `git log -1 && git tag -l`
 6. Push: `git push origin main && git push origin v<VERSION>`
 7. Create GitHub Release from the tag (optional but recommended)
+
+## Next Release
+
+The HAL compliance remediation adds backwards-compatible exported API:
+`CompilePrecomputedLinks`, `(*Instance).WrapPrecomputedLinks`,
+`ErrDuplicateCurie`, `ErrInvalidCurie`, and `ErrAddLinkPrecomputed`. It also
+changes several documented behaviors (value-receiver marshaling, static and
+precomputed `AddLink` rejection, and always-emitted collection totals). These
+are compatible additions and behavior corrections, so the recommended next
+release is **v1.1.0**, a minor release. `version.go` is not bumped by these
+changes; use the release process below.
 
 ## Version History
 
