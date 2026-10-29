@@ -11,6 +11,7 @@ import (
 	"io"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -160,6 +161,165 @@ func requireExactKeys(t *testing.T, obj map[string]json.RawMessage, keys ...stri
 	}
 }
 
+// findDuplicateKeys scans data for duplicate object member names at any depth.
+// Duplicate names are non-interoperable JSON and cannot be detected by decoding
+// into a map.
+func findDuplicateKeys(data []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+
+	type frame struct {
+		object  bool
+		keys    map[string]struct{}
+		wantKey bool
+	}
+	var stack []frame
+
+	for {
+		tok, err := dec.Token()
+		if errors.Is(err, io.EOF) {
+			if len(stack) != 0 {
+				return errors.New("unexpected EOF")
+			}
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		if delim, ok := tok.(json.Delim); ok {
+			switch delim {
+			case '{':
+				stack = append(stack, frame{
+					object:  true,
+					keys:    make(map[string]struct{}),
+					wantKey: true,
+				})
+			case '[':
+				stack = append(stack, frame{})
+			case '}', ']':
+				if len(stack) == 0 {
+					return errors.New("unbalanced closing delimiter")
+				}
+				stack = stack[:len(stack)-1]
+				if n := len(stack); n > 0 && stack[n-1].object {
+					stack[n-1].wantKey = true
+				}
+			}
+			continue
+		}
+
+		if n := len(stack); n > 0 && stack[n-1].object {
+			top := &stack[n-1]
+			if top.wantKey {
+				key, ok := tok.(string)
+				if !ok {
+					return fmt.Errorf("object key has type %T, want string", tok)
+				}
+				if _, exists := top.keys[key]; exists {
+					return fmt.Errorf("duplicate object key %q", key)
+				}
+				top.keys[key] = struct{}{}
+				top.wantKey = false
+			} else {
+				top.wantKey = true
+			}
+		}
+	}
+}
+
+func assertNoDuplicateKeys(t *testing.T, data []byte) {
+	t.Helper()
+	if err := findDuplicateKeys(data); err != nil {
+		t.Fatalf("invalid JSON keys in %s: %v", data, err)
+	}
+}
+
+// collectRelationObjects returns the link objects for rel. HAL allows a
+// relation value to be either one Link Object or an array of Link Objects.
+func collectRelationObjects(root map[string]any, rel string) ([]map[string]any, error) {
+	rawLinks, ok := root["_links"]
+	if !ok {
+		return nil, errors.New(`missing "_links" object`)
+	}
+	links, ok := rawLinks.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf(`"_links" has type %T, want object`, rawLinks)
+	}
+
+	raw, ok := links[rel]
+	if !ok {
+		return nil, fmt.Errorf("missing link relation %q", rel)
+	}
+
+	switch v := raw.(type) {
+	case map[string]any:
+		return []map[string]any{v}, nil
+	case []any:
+		objects := make([]map[string]any, 0, len(v))
+		for i, item := range v {
+			obj, ok := item.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("relation %q element %d has type %T, want object", rel, i, item)
+			}
+			objects = append(objects, obj)
+		}
+		return objects, nil
+	default:
+		return nil, fmt.Errorf("relation %q has type %T, want object or array of objects", rel, raw)
+	}
+}
+
+func relationObjects(t *testing.T, root map[string]any, rel string) []map[string]any {
+	t.Helper()
+	objects, err := collectRelationObjects(root, rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return objects
+}
+
+func checkLinkHref(link map[string]any) error {
+	href, ok := link["href"]
+	if !ok {
+		return errors.New(`missing required "href" field`)
+	}
+	if _, ok := href.(string); !ok {
+		return fmt.Errorf(`"href" has type %T, want string`, href)
+	}
+	return nil
+}
+
+func requireHref(t *testing.T, link map[string]any) {
+	t.Helper()
+	if err := checkLinkHref(link); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// recoverPanic calls fn and reports any panic as a message instead of
+// propagating it.
+func recoverPanic(fn func()) (message string, panicked bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			message = fmt.Sprint(r)
+			panicked = true
+		}
+	}()
+	fn()
+	return "", false
+}
+
+func assertPanics(t *testing.T, want string, fn func()) {
+	t.Helper()
+	message, panicked := recoverPanic(fn)
+	if !panicked {
+		t.Fatalf("expected panic containing %q, got none", want)
+	}
+	if !strings.Contains(message, want) {
+		t.Fatalf("panic %q does not contain %q", message, want)
+	}
+}
+
 func TestJSONAssertionHelpers(t *testing.T) {
 	t.Run("matching values pass", func(t *testing.T) {
 		if err := jsonValuesEqual(
@@ -203,6 +363,130 @@ func TestJSONAssertionHelpers(t *testing.T) {
 	t.Run("trailing JSON fails", func(t *testing.T) {
 		if _, err := decodeAny([]byte(`{"a":1} {"b":2}`)); err == nil {
 			t.Fatal("trailing JSON was not detected")
+		}
+	})
+}
+
+func TestHALContractHelpers(t *testing.T) {
+	t.Run("duplicate scanner accepts clean JSON", func(t *testing.T) {
+		if err := findDuplicateKeys([]byte(`{"a":[{"b":1},{"c":2}],"d":{"e":3}}`)); err != nil {
+			t.Fatalf("clean JSON rejected: %v", err)
+		}
+	})
+
+	t.Run("duplicate scanner rejects top-level duplicate", func(t *testing.T) {
+		if err := findDuplicateKeys([]byte(`{"a":1,"a":2}`)); err == nil {
+			t.Fatal("duplicate top-level key was not detected")
+		}
+	})
+
+	t.Run("duplicate scanner rejects nested duplicate", func(t *testing.T) {
+		if err := findDuplicateKeys([]byte(`{"outer":{"a":1,"a":2}}`)); err == nil {
+			t.Fatal("duplicate nested key was not detected")
+		}
+	})
+
+	t.Run("duplicate scanner rejects duplicate in array element", func(t *testing.T) {
+		if err := findDuplicateKeys([]byte(`[{"a":1,"a":2}]`)); err == nil {
+			t.Fatal("duplicate key inside array element was not detected")
+		}
+	})
+
+	t.Run("duplicate scanner rejects malformed JSON", func(t *testing.T) {
+		if err := findDuplicateKeys([]byte(`{"a":1`)); err == nil {
+			t.Fatal("malformed JSON was not detected")
+		}
+	})
+
+	t.Run("relation helper accepts one object", func(t *testing.T) {
+		root := map[string]any{
+			"_links": map[string]any{
+				"self": map[string]any{"href": "/users/1"},
+			},
+		}
+		links, err := collectRelationObjects(root, "self")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(links) != 1 {
+			t.Fatalf("got %d links, want 1", len(links))
+		}
+		if err := checkLinkHref(links[0]); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("relation helper accepts array of objects", func(t *testing.T) {
+		root := map[string]any{
+			"_links": map[string]any{
+				"item": []any{
+					map[string]any{"href": "/items/1"},
+					map[string]any{"href": "/items/2"},
+				},
+			},
+		}
+		links, err := collectRelationObjects(root, "item")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(links) != 2 {
+			t.Fatalf("got %d links, want 2", len(links))
+		}
+	})
+
+	t.Run("relation helper rejects missing links", func(t *testing.T) {
+		if _, err := collectRelationObjects(map[string]any{}, "self"); err == nil {
+			t.Fatal("missing _links was not detected")
+		}
+	})
+
+	t.Run("relation helper rejects non-object links", func(t *testing.T) {
+		root := map[string]any{"_links": []any{}}
+		if _, err := collectRelationObjects(root, "self"); err == nil {
+			t.Fatal("non-object _links was not detected")
+		}
+	})
+
+	t.Run("relation helper rejects non-object relation", func(t *testing.T) {
+		root := map[string]any{
+			"_links": map[string]any{"self": "/users/1"},
+		}
+		if _, err := collectRelationObjects(root, "self"); err == nil {
+			t.Fatal("string relation value was not detected")
+		}
+	})
+
+	t.Run("relation helper rejects non-object array element", func(t *testing.T) {
+		root := map[string]any{
+			"_links": map[string]any{"item": []any{"/items/1"}},
+		}
+		if _, err := collectRelationObjects(root, "item"); err == nil {
+			t.Fatal("non-object array element was not detected")
+		}
+	})
+
+	t.Run("href helper rejects missing href", func(t *testing.T) {
+		if err := checkLinkHref(map[string]any{"title": "x"}); err == nil {
+			t.Fatal("missing href was not detected")
+		}
+	})
+
+	t.Run("href helper rejects non-string href", func(t *testing.T) {
+		if err := checkLinkHref(map[string]any{"href": 42}); err == nil {
+			t.Fatal("non-string href was not detected")
+		}
+	})
+
+	t.Run("panic helper detects panic", func(t *testing.T) {
+		message, panicked := recoverPanic(func() { panic("boom") })
+		if !panicked || message != "boom" {
+			t.Fatalf("got (%q, %t), want (\"boom\", true)", message, panicked)
+		}
+	})
+
+	t.Run("panic helper detects absence", func(t *testing.T) {
+		if _, panicked := recoverPanic(func() {}); panicked {
+			t.Fatal("panic reported for clean function")
 		}
 	})
 }
