@@ -8,13 +8,17 @@ import (
 	"reflect"
 )
 
-// CollectionPage represents a standard HAL collection response.
+// CollectionPage represents a project-specific HAL collection convention.
 // It includes navigation links, embedded items, and pagination metadata.
+//
+// Count and Total are always serialized so a total of zero stays observable;
+// they are not part of the HAL specification. Empty _links and _embedded maps
+// are omitted.
 type CollectionPage struct {
 	Links    map[string]any `json:"_links,omitempty"`
 	Embedded map[string]any `json:"_embedded,omitempty"`
 	Count    int            `json:"count"`
-	Total    int            `json:"total,omitempty"`
+	Total    int            `json:"total"`
 }
 
 // Collection creates a CollectionPage using the DefaultInstance.

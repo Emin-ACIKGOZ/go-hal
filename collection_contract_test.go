@@ -101,7 +101,6 @@ func TestCollectionConvention_SliceVariants(t *testing.T) {
 		name          string
 		items         any
 		wantCount     int
-		wantTotal     bool
 		total         int
 		wantItemLinks bool
 	}{
@@ -127,7 +126,7 @@ func TestCollectionConvention_SliceVariants(t *testing.T) {
 			wantCount: 1,
 		},
 		{
-			name:          "zero total is omitted",
+			name:          "zero total is emitted",
 			items:         []*collectionContractUser{pointerItem},
 			wantCount:     1,
 			total:         0,
@@ -138,7 +137,6 @@ func TestCollectionConvention_SliceVariants(t *testing.T) {
 			items:         []*collectionContractUser{pointerItem},
 			wantCount:     1,
 			total:         5,
-			wantTotal:     true,
 			wantItemLinks: true,
 		},
 	}
@@ -161,8 +159,8 @@ func TestCollectionConvention_SliceVariants(t *testing.T) {
 			if got := fmt.Sprint(root["count"]); got != strconv.Itoa(tc.wantCount) {
 				t.Errorf("count = %s, want %d", got, tc.wantCount)
 			}
-			if _, exists := root["total"]; exists != tc.wantTotal {
-				t.Errorf("total present = %t, want %t", exists, tc.wantTotal)
+			if got := fmt.Sprint(root["total"]); got != strconv.Itoa(tc.total) {
+				t.Errorf("total = %s, want %d", got, tc.total)
 			}
 
 			embedded, ok := root["_embedded"].(map[string]any)
@@ -233,17 +231,17 @@ func TestCollectionConvention_OmitsEmptyContainers(t *testing.T) {
 		{
 			name: "zero value",
 			page: CollectionPage{},
-			want: []byte(`{"count":0}`),
+			want: []byte(`{"count":0,"total":0}`),
 		},
 		{
 			name: "empty maps",
 			page: CollectionPage{Links: map[string]any{}, Embedded: map[string]any{}},
-			want: []byte(`{"count":0}`),
+			want: []byte(`{"count":0,"total":0}`),
 		},
 		{
 			name: "links only",
 			page: CollectionPage{Links: map[string]any{"self": Link{Rel: "self", Href: "/x"}}},
-			want: []byte(`{"_links":{"self":{"href":"/x"}},"count":0}`),
+			want: []byte(`{"_links":{"self":{"href":"/x"}},"count":0,"total":0}`),
 		},
 	}
 
