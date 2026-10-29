@@ -43,9 +43,7 @@ func TestMarshal_InjectsLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !contains(b, `"_links"`) {
-		t.Fatalf("expected _links in output: %s", b)
-	}
+	assertJSONEqual(t, b, []byte(`{"id":1,"_links":{"self":{"href":"/users/1"}}}`))
 }
 
 func TestMarshal_NonObjectFails(t *testing.T) {
@@ -76,8 +74,4 @@ func TestMarshal_EmptyStruct(t *testing.T) {
 	if string(b) != expected {
 		t.Fatalf("expected %s, got %s", expected, string(b))
 	}
-}
-
-func contains(b []byte, s string) bool {
-	return string(b) != "" && string(b) != "{}" && (len(b) >= len(s))
 }

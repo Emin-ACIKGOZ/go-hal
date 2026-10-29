@@ -30,12 +30,7 @@ func TestSplicePrecomputed_BothPresent(t *testing.T) {
 	links := []byte(`{"_links":{"self":{}}}`)
 
 	result := splicePrecomputed(data, links)
-	if !contains(result, `"id":1`) {
-		t.Fatalf("expected id in result: %s", result)
-	}
-	if !contains(result, `"_links"`) {
-		t.Fatalf("expected links in result: %s", result)
-	}
+	assertJSONEqual(t, result, []byte(`{"id":1,"_links":{"self":{}}}`))
 }
 
 func TestSplicePrecomputed_DataWithLinks(t *testing.T) {
@@ -43,10 +38,5 @@ func TestSplicePrecomputed_DataWithLinks(t *testing.T) {
 	links := []byte(`{"_links":{"self":{}}}`)
 
 	result := splicePrecomputed(data, links)
-	if !contains(result, `"id":1`) {
-		t.Fatalf("expected id in result: %s", result)
-	}
-	if !contains(result, `"_links"`) {
-		t.Fatalf("expected links in result: %s", result)
-	}
+	assertJSONEqual(t, result, []byte(`{"id":1,"_links":{"self":{}}}`))
 }

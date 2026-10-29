@@ -127,9 +127,9 @@ func TestMarshal_NilEmbedded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if containsString(string(out), "_embedded") {
-		t.Fatalf("expected no _embedded field, got %s", out)
-	}
+	obj := decodeJSONObject(t, out)
+	forbidKeys(t, obj, "_embedded")
+	requireKeys(t, obj, "_links")
 }
 
 func TestMarshal_NilInstance(t *testing.T) {
@@ -177,20 +177,5 @@ func TestWrap_ContextCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !containsString(string(out), "canceled") {
-		t.Fatalf("expected canceled link, got %s", out)
-	}
-}
-
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	assertJSONEqual(t, out, []byte(`{"id":1,"_links":{"canceled":{"href":"/canceled"}}}`))
 }

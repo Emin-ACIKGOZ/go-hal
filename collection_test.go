@@ -67,14 +67,12 @@ func TestCollection_MarshalJSON_Recursive(t *testing.T) {
 		t.Fatalf("marshal failed: %v", err)
 	}
 
-	// Check for Collection Link
-	if !contains(b, `"/next"`) {
-		t.Fatal("collection missing 'next' link")
-	}
-
-	// Check for Item Link (Recursive Envelope)
-	// We expect the item inside _embedded to have its own _links
-	if !contains(b, `"/user"`) {
-		t.Fatal("embedded item missing 'self' link (recursive marshaling failed)")
-	}
+	// The collection link, the embedded item, and the item's recursive links
+	// must all be present with their expected values.
+	assertJSONEqual(t, b, []byte(`{
+		"_links":{"self":{"href":"/next"}},
+		"_embedded":{"items":[{"id":1,"_links":{"self":{"href":"/user"}}}]},
+		"count":1,
+		"total":1
+	}`))
 }

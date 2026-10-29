@@ -25,9 +25,12 @@ func TestCollection_PackageLevel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !contains(b, `"count":2`) {
-		t.Fatalf("expected count in output: %s", b)
-	}
+	assertJSONEqual(t, b, []byte(`{
+		"_links":{"self":{"href":"/users"}},
+		"_embedded":{"items":[{"id":1},{"id":2}]},
+		"count":2,
+		"total":10
+	}`))
 }
 
 func TestCollection_Instance(t *testing.T) {
@@ -43,7 +46,10 @@ func TestCollection_Instance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !contains(b, `"count":2`) {
-		t.Fatalf("expected count in output: %s", b)
-	}
+	assertJSONEqual(t, b, []byte(`{
+		"_links":{"self":{"href":"/users"}},
+		"_embedded":{"items":[{"id":1},{"id":2}]},
+		"count":2,
+		"total":10
+	}`))
 }

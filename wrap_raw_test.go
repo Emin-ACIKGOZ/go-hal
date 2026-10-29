@@ -20,9 +20,7 @@ func TestWrapRaw_Basic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !contains(b, `"id":42`) {
-		t.Fatalf("expected data in output: %s", b)
-	}
+	assertJSONEqual(t, b, []byte(`{"id":42}`))
 }
 
 func TestWrapRaw_NilData(t *testing.T) {
