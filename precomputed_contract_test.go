@@ -106,14 +106,28 @@ func TestPrecomputedContract_RejectsInvalidLinkShapes(t *testing.T) {
 		[]byte(`{"self":null}`),
 		[]byte(`{"self":"/x"}`),
 		[]byte(`{"self":{"href":42}}`),
+		[]byte(`{"self":{"href":null}}`),
 		[]byte(`{"self":[{"href":42}]}`),
+		[]byte(`{"self":[["/x"]]}`),
 		[]byte(`{"self":["/x"]}`),
 		[]byte(`{"self":{"href":"/x"},"":{"href":"/y"}}`),
+		[]byte(`{"self":{"href":"/x"},"   ":{"href":"/y"}}`),
+		[]byte(`{"self":{"href":"/x","templated":"yes"}}`),
+		[]byte(`{"self":{"href":"/x","type":42}}`),
+		[]byte(`{"self":{"href":"/x","deprecation":false}}`),
+		[]byte(`{"self":{"href":"/x","name":[]}}`),
+		[]byte(`{"self":{"href":"/x","profile":{}}}`),
+		[]byte(`{"self":{"href":"/x","title":1}}`),
+		[]byte(`{"self":{"href":"/x","hreflang":true}}`),
+		[]byte(`{"self":{"href":"/x","method":0}}`),
 		[]byte(`{"curies":{"name":"acme","href":"https://docs/{rel}"}}`),
 		[]byte(`{"curies":[{"href":"https://docs/{rel}"}]}`),
 		[]byte(`{"curies":[{"name":42,"href":"https://docs/{rel}"}]}`),
+		[]byte(`{"curies":[{"name":null,"href":"https://docs/{rel}"}]}`),
+		[]byte(`{"curies":[{"name":"acme","href":null}]}`),
 		[]byte(`{"_links":{"self":{}}}`),
 		[]byte(`{"_links":{"self":{"href":42}}}`),
+		[]byte(`{"_links":{"self":{"href":null}}}`),
 		[]byte(`{"_links":{"self":{"href":"/x"}},"extra":{"href":"/y"}}`),
 	}
 
@@ -154,6 +168,47 @@ func TestPrecomputedContract_AcceptsLinkArraysAndCuries(t *testing.T) {
 	}
 	assertNoDuplicateKeys(t, b)
 	assertJSONEqual(t, b, want)
+}
+
+func TestPrecomputedContract_AcceptsEmptyArraysAndUnknownFields(t *testing.T) {
+	links := []byte(`{
+		"item":[],
+		"curies":[],
+		"self":{
+			"href":"/x",
+			"templated":true,
+			"type":"application/json",
+			"deprecation":"/deprecated",
+			"name":"main",
+			"profile":"/profile",
+			"title":"Title",
+			"hreflang":"en",
+			"method":"GET",
+			"x-vendor":"kept"
+		}
+	}`)
+
+	b, err := marshalPrecomputed(t, map[string]any{"id": 1}, links)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNoDuplicateKeys(t, b)
+
+	root, ok := decodeJSONValue(t, b).(map[string]any)
+	if !ok {
+		t.Fatal("document is not an object")
+	}
+	linksObject, ok := root["_links"].(map[string]any)
+	if !ok {
+		t.Fatalf("_links has type %T, want object", root["_links"])
+	}
+	if items, ok := linksObject["item"].([]any); !ok || len(items) != 0 {
+		t.Fatalf("item = %#v, want empty array", linksObject["item"])
+	}
+	self := relationObjects(t, root, "self")
+	if len(self) != 1 || self[0]["x-vendor"] != "kept" {
+		t.Fatalf("self = %#v, want preserved unknown field", self)
+	}
 }
 
 func TestPrecomputedContract_RejectsNonObjectData(t *testing.T) {

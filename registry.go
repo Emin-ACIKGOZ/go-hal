@@ -339,7 +339,7 @@ func wrapPrecomputedLinks(linksJSON []byte) []byte {
 // pre-serialized links are trusted for byte splicing.
 func validatePrecomputedLinkRelations(links map[string]stdjson.RawMessage) error {
 	for rel, raw := range links {
-		if rel == "" {
+		if strings.TrimSpace(rel) == "" {
 			return errors.New("hal: precomputed link relation must not be empty")
 		}
 		if err := validatePrecomputedRelationValue(rel, raw); err != nil {
@@ -347,6 +347,74 @@ func validatePrecomputedLinkRelations(links map[string]stdjson.RawMessage) error
 		}
 	}
 	return nil
+}
+
+type jsonValueKind uint8
+
+const (
+	jsonNull jsonValueKind = iota
+	jsonBool
+	jsonString
+	jsonNumber
+	jsonObject
+	jsonArray
+	jsonInvalid
+)
+
+func (k jsonValueKind) String() string {
+	switch k {
+	case jsonNull:
+		return "null"
+	case jsonBool:
+		return "boolean"
+	case jsonString:
+		return "string"
+	case jsonNumber:
+		return "number"
+	case jsonObject:
+		return "object"
+	case jsonArray:
+		return "array"
+	default:
+		return "invalid JSON"
+	}
+}
+
+// linkValueKind classifies an already-validated raw JSON value by its first
+// non-whitespace byte. It avoids decoding values that only need a type check.
+func linkValueKind(raw []byte) jsonValueKind {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return jsonInvalid
+	}
+	switch trimmed[0] {
+	case 'n':
+		return jsonNull
+	case 't', 'f':
+		return jsonBool
+	case '"':
+		return jsonString
+	case '{':
+		return jsonObject
+	case '[':
+		return jsonArray
+	case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+		return jsonNumber
+	default:
+		return jsonInvalid
+	}
+}
+
+var precomputedLinkSchema = map[string]jsonValueKind{
+	"href":        jsonString,
+	"templated":   jsonBool,
+	"type":        jsonString,
+	"deprecation": jsonString,
+	"name":        jsonString,
+	"profile":     jsonString,
+	"title":       jsonString,
+	"hreflang":    jsonString,
+	"method":      jsonString,
 }
 
 func validatePrecomputedRelationValue(rel string, raw stdjson.RawMessage) error {
@@ -380,22 +448,49 @@ func validatePrecomputedRelationValue(rel string, raw stdjson.RawMessage) error 
 }
 
 func validatePrecomputedLinkObject(rel string, raw stdjson.RawMessage) error {
+	if linkValueKind(raw) != jsonObject {
+		return fmt.Errorf("hal: precomputed relation %q must contain link objects", rel)
+	}
 	var obj map[string]stdjson.RawMessage
 	if err := stdjson.Unmarshal(raw, &obj); err != nil || obj == nil {
 		return fmt.Errorf("hal: precomputed relation %q must contain link objects", rel)
 	}
-	hrefRaw, ok := obj["href"]
+
+	href, ok := obj["href"]
 	if !ok {
 		return fmt.Errorf("hal: precomputed relation %q link is missing href", rel)
 	}
-	var href string
-	if err := stdjson.Unmarshal(hrefRaw, &href); err != nil {
+	if err := requireJSONKind(href, jsonString); err != nil {
 		return fmt.Errorf("hal: precomputed relation %q href must be a string", rel)
+	}
+
+	for field, want := range precomputedLinkSchema {
+		if field == "href" {
+			continue
+		}
+		if value, ok := obj[field]; ok {
+			if err := requireJSONKind(value, want); err != nil {
+				return fmt.Errorf(
+					"hal: precomputed relation %q link field %q must be %s",
+					rel, field, want,
+				)
+			}
+		}
+	}
+	return nil
+}
+
+func requireJSONKind(raw stdjson.RawMessage, want jsonValueKind) error {
+	if got := linkValueKind(raw); got != want {
+		return fmt.Errorf("value has type %s, want %s", got, want)
 	}
 	return nil
 }
 
 func requireStringField(raw stdjson.RawMessage, field string) error {
+	if linkValueKind(raw) != jsonObject {
+		return errors.New("must be a link object")
+	}
 	var obj map[string]stdjson.RawMessage
 	if err := stdjson.Unmarshal(raw, &obj); err != nil || obj == nil {
 		return errors.New("must be a link object")
@@ -404,8 +499,7 @@ func requireStringField(raw stdjson.RawMessage, field string) error {
 	if !ok {
 		return fmt.Errorf("link object is missing %s", field)
 	}
-	var str string
-	if err := stdjson.Unmarshal(value, &str); err != nil {
+	if err := requireJSONKind(value, jsonString); err != nil {
 		return fmt.Errorf("link object %s must be a string", field)
 	}
 	return nil
