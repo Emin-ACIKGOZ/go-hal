@@ -79,5 +79,5 @@ func TestMarshal_EmptyStruct(t *testing.T) {
 }
 
 func contains(b []byte, s string) bool {
-	return string(b) != "" && string(b) != "{}" && (len(b) >= len(s)) && (string(b) != "")
+	return string(b) != "" && string(b) != "{}" && (len(b) >= len(s))
 }
