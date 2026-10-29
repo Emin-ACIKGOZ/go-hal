@@ -79,6 +79,48 @@ jobs:
           awk -v coverage="${coverage}" 'BEGIN { if (coverage < 70.0) exit 1 }'
           echo "Coverage meets the 70% minimum"
 
+  benchmarks:
+    name: Benchmarks (advisory)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: true
+
+      - name: Benchmark head
+        run: |
+          go test -run='^$' -bench=. -benchmem -cpu=1 -count=10 -benchtime=200ms ./... \
+            > "${RUNNER_TEMP}/head.txt"
+
+      - name: Checkout base
+        run: git checkout "${{ github.event.pull_request.base.sha }}"
+
+      - name: Benchmark base
+        run: |
+          go test -run='^$' -bench=. -benchmem -cpu=1 -count=10 -benchtime=200ms ./... \
+            > "${RUNNER_TEMP}/base.txt"
+
+      - name: Compare with benchstat
+        run: |
+          go install golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e
+          benchstat "${RUNNER_TEMP}/base.txt" "${RUNNER_TEMP}/head.txt" | tee "${RUNNER_TEMP}/benchstat.txt"
+          {
+            echo '## Benchmark comparison (advisory)'
+            echo '```'
+            cat "${RUNNER_TEMP}/benchstat.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

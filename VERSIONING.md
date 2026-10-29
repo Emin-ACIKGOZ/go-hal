@@ -77,17 +77,15 @@ All commits must maintain test coverage above 70%. The CI pipeline:
 
 Coverage is reported per-commit in the CI output.
 
-### 2. Benchmark Regression Detection
+### 2. Advisory Benchmark Comparison
 
-Performance regressions are automatically detected and fail the build:
+Pull requests get an advisory benchmark comparison on the stable Go toolchain:
 
-- Benchmarks are run with `go test -bench=.` using 3-second timing
-- Current results are compared against the baseline (`.benchmarks/baseline.txt`)
-- **Allowed variance**: ±10% (accounts for 5% natural variance + 5% threshold)
-- Regressions >10% will **fail** the CI build
-- Minor changes (5-10%) are flagged as warnings but don't fail the build
-
-The baseline is stored in `.benchmarks/baseline.txt` and updated after each successful CI run.
+- The base and head revisions are benchmarked with
+  `go test -run='^$' -bench=. -benchmem -cpu=1 -count=10 -benchtime=200ms ./...`
+- `benchstat` compares the two result sets and posts the table to the workflow summary
+- The job is advisory: it does not fail the build or block a merge
+- Reviewers decide whether a measured change matters for the affected path
 
 ### 3. Code Quality Checks
 
