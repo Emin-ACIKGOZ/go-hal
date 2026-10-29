@@ -35,7 +35,8 @@ func (a *Adapter) InjectLinkSchema() {
 	if a.doc.Components.Schemas == nil {
 		a.doc.Components.Schemas = make(openapi3.Schemas)
 	}
-	if link, ok := a.doc.Components.Schemas[LinkSchemaName]; ok && link != nil {
+	if link, ok := a.doc.Components.Schemas[LinkSchemaName]; ok && link != nil &&
+		(link.Value != nil || link.Ref != "") {
 		return
 	}
 	a.doc.Components.Schemas[LinkSchemaName] =

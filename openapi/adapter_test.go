@@ -60,6 +60,21 @@ func TestInjectLinkSchema_PreservesCustomLink(t *testing.T) {
 	}
 }
 
+func TestInjectLinkSchema_ReplacesEmptyRef(t *testing.T) {
+	doc := &openapi3.T{
+		Components: &openapi3.Components{
+			Schemas: openapi3.Schemas{
+				LinkSchemaName: {},
+			},
+		},
+	}
+	New(doc).InjectLinkSchema()
+
+	if ref := doc.Components.Schemas[LinkSchemaName]; ref == nil || ref.Value == nil {
+		t.Fatal("empty Link schema ref was not replaced")
+	}
+}
+
 func TestMakeResource_NilSchemaIsSafe(_ *testing.T) {
 	New(&openapi3.T{}).MakeResource(nil)
 }
