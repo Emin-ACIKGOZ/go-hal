@@ -7,11 +7,44 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strconv"
 	"testing"
 	"unicode/utf8"
 )
+
+var (
+	fuzzPositiveLinks = []byte(`{"self":{"href":"/x"}}`)
+	fuzzPositiveData  = []byte(`{"id":1}`)
+)
+
+// fuzzDecodeValue decodes exactly one JSON value with number preservation.
+func fuzzDecodeValue(t *testing.T, data []byte) any {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+
+	var value any
+	if err := dec.Decode(&value); err != nil {
+		t.Fatalf("decode %s: %v", data, err)
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		t.Fatalf("unexpected trailing JSON after %s", data)
+	}
+	return value
+}
+
+func fuzzDecodeObject(t *testing.T, data []byte) map[string]any {
+	t.Helper()
+	value := fuzzDecodeValue(t, data)
+	obj, ok := value.(map[string]any)
+	if !ok {
+		t.Fatalf("JSON value has type %T, want object", value)
+	}
+	return obj
+}
 
 func FuzzMarshal_WithRegisteredGenerator(f *testing.F) {
 	f.Add(1, "Ada")
@@ -38,14 +71,13 @@ func FuzzMarshal_WithRegisteredGenerator(f *testing.F) {
 		if err != nil {
 			t.Fatalf("marshal error: %v", err)
 		}
-
-		var result map[string]any
-		if err := json.Unmarshal(out, &result); err != nil {
-			t.Fatalf("unmarshal error: %v", err)
+		if len(out) == 0 {
+			t.Fatal("marshal returned empty output")
 		}
 
-		if result == nil {
-			t.Fatal("expected result to not be nil")
+		result := fuzzDecodeObject(t, out)
+		if _, ok := result["_links"].(map[string]any); !ok {
+			t.Fatalf("_links missing from %s", out)
 		}
 	})
 }
@@ -66,14 +98,13 @@ func FuzzMarshal_WithoutGenerator(f *testing.F) {
 		if err != nil {
 			t.Fatalf("marshal error: %v", err)
 		}
-
-		var result map[string]any
-		if err := json.Unmarshal(out, &result); err != nil {
-			t.Fatalf("unmarshal error: %v", err)
+		if len(out) == 0 {
+			t.Fatal("marshal returned empty output")
 		}
 
-		if result == nil {
-			t.Fatal("expected result to not be nil")
+		result := fuzzDecodeObject(t, out)
+		if _, exists := result["_links"]; exists {
+			t.Fatalf("unexpected _links without a generator: %s", out)
 		}
 	})
 }
@@ -110,25 +141,36 @@ func FuzzWrapPrecomputed(f *testing.F) {
 	f.Add([]byte(" \n {\"_links\":{\"self\":{\"href\":\"/x\"}}} \n"), []byte(`{"id":1}`))
 	f.Add([]byte(`{"self":{"href":"/x"}}`), []byte(`{"id":1}`))
 	f.Add([]byte(`{}`), []byte(`{}`))
+	f.Add([]byte(`{ }`), []byte(`{ }`))
 	f.Add([]byte(`[]`), []byte(`{"id":1}`))
 	f.Add([]byte(`null`), []byte(`{"id":1}`))
 	f.Add([]byte(`not json`), []byte(`{"id":1}`))
 	f.Add([]byte(`{"_links":{"self":{"href":"/x"}}}`), []byte(`null`))
 	f.Add([]byte(`{"_links":{"self":{"href":"/x"}}}`), []byte(`[1,2]`))
 	f.Add([]byte(`{"_links":{"self":{"href":"/x","href":"/y"}}}`), []byte(`{"id":1}`))
+	f.Add(fuzzPositiveLinks, fuzzPositiveData)
 
 	f.Fuzz(func(t *testing.T, linksJSON, data []byte) {
 		linksDuplicateFree := findDuplicateKeys(linksJSON) == nil
 		dataDuplicateFree := findDuplicateKeys(data) == nil
+		_, linksErr := normalizePrecomputedLinks(linksJSON)
 
 		inst := New()
 		env := inst.WrapPrecomputed(context.Background(), json.RawMessage(data), linksJSON)
 		out, err := json.Marshal(env)
 		if err != nil {
-			// Malformed input and non-object data are allowed to fail.
+			if bytes.Equal(linksJSON, fuzzPositiveLinks) && bytes.Equal(data, fuzzPositiveData) {
+				t.Fatalf("positive control rejected: %v", err)
+			}
+			if len(out) != 0 {
+				t.Fatalf("error returned partial output: %s", out)
+			}
 			return
 		}
 
+		if len(out) == 0 {
+			t.Fatal("successful marshal returned empty output")
+		}
 		if !json.Valid(out) {
 			t.Fatalf("invalid JSON output: %s", out)
 		}
@@ -139,6 +181,14 @@ func FuzzWrapPrecomputed(f *testing.F) {
 		if len(trimmed) == 0 || trimmed[0] != '{' {
 			t.Fatalf("output root is not an object: %s", out)
 		}
+
+		dataKeys, dataObject := fuzzTopLevelObjectKeys(data)
+		_, hasLinks := dataKeys[fieldLinks]
+		_, hasEmbedded := dataKeys[fieldEmbedded]
+		if linksErr == nil && dataObject && (hasLinks || hasEmbedded) {
+			t.Fatalf("reserved field conflict was not reported: %s", out)
+		}
+
 		// Raw JSON data can carry duplicate keys; the serializer does not
 		// reinterpret valid input. Duplicate-free inputs must stay clean.
 		if linksDuplicateFree && dataDuplicateFree {
@@ -152,7 +202,9 @@ func FuzzWrapPrecomputed(f *testing.F) {
 func FuzzSplicePrecomputed(f *testing.F) {
 	f.Add([]byte(`{"id":1}`), []byte(`{"_links":{"self":{"href":"/x"}}}`))
 	f.Add([]byte(`{}`), []byte(`{"_links":{"self":{"href":"/x"}}}`))
+	f.Add([]byte(`{ }`), []byte(`{"_links":{"self":{"href":"/x"}}}`))
 	f.Add([]byte(`{"id":1}`), []byte(`{"self":{"href":"/x"}}`))
+	f.Add([]byte(`{"id":1}`), []byte(`{ }`))
 	f.Add([]byte(`null`), []byte(`{"_links":{"self":{"href":"/x"}}}`))
 	f.Add([]byte(`{"id":1}`), []byte(nil))
 	f.Add([]byte(`not json`), []byte(`[]`))
@@ -163,10 +215,13 @@ func FuzzSplicePrecomputed(f *testing.F) {
 		}
 
 		out := splicePrecomputed(data, linksJSON)
+		if len(out) == 0 {
+			return
+		}
 
 		dataKeys, dataObject := fuzzTopLevelObjectKeys(data)
 		linkKeys, linksObject := fuzzTopLevelObjectKeys(linksJSON)
-		if !dataObject || !linksObject || len(data) <= 2 || len(linksJSON) <= 2 {
+		if !dataObject || !linksObject {
 			return
 		}
 
@@ -175,6 +230,24 @@ func FuzzSplicePrecomputed(f *testing.F) {
 		}
 		if !utf8.Valid(out) {
 			t.Fatalf("invalid UTF-8 output: %s", out)
+		}
+		if isEmptyJSONObject(data) {
+			if isEmptyJSONObject(linksJSON) {
+				if !isEmptyJSONObject(out) {
+					t.Fatalf("both empty objects produced %s", out)
+				}
+				return
+			}
+			if !bytes.Equal(bytes.TrimSpace(out), bytes.TrimSpace(linksJSON)) {
+				t.Fatalf("empty data lost links: %s", out)
+			}
+			return
+		}
+		if isEmptyJSONObject(linksJSON) {
+			if !bytes.Equal(bytes.TrimSpace(out), bytes.TrimSpace(data)) {
+				t.Fatalf("empty links lost data: %s", out)
+			}
+			return
 		}
 
 		overlap := false
@@ -194,6 +267,7 @@ func FuzzSplicePrecomputed(f *testing.F) {
 
 func fuzzTopLevelObjectKeys(data []byte) (map[string]struct{}, bool) {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	tok, err := dec.Token()
 	if err != nil {
 		return nil, false
