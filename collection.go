@@ -28,7 +28,8 @@ func Collection[T any](ctx context.Context, items []*T, total int, selfLink Link
 
 // Collection wraps a slice of items into a HAL CollectionPage.
 // It iterates over the items, wraps each one using the registered generators,
-// and constructs the embedded items list.
+// and constructs the embedded items list. Generators are registered for *T, so
+// use []*T to get per-item links; []T does not match a *T generator.
 //
 // This method panics if items is not a slice.
 func (i *Instance) Collection(ctx context.Context, items any, total int, selfLink Link) *CollectionPage {

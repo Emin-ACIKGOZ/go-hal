@@ -1,33 +1,6 @@
 // Copyright (c) 2025-2026 Emin Salih Açıkgöz
 // SPDX-License-Identifier: MIT
 
-// Package hal provides a HAL (Hypertext Application Language) serializer for Go.
-//
-// # Overview
-//
-// go-hal wraps Go values in HAL envelopes and injects _links and _embedded
-// metadata during JSON serialization. It targets the supported subset of
-// draft-kelly-json-hal-11, an expired IETF Informational draft rather than an
-// RFC. See COMPLIANCE.md for the support matrix and validation boundaries.
-//
-// Data that marshals to null, typed-nil pointers, and empty objects are
-// normalized to an empty resource. Root arrays and scalars are rejected.
-//
-// # Key Features
-//
-//   - Typed link generators (the deprecated reflective registration still uses reflection)
-//   - Validated, reusable precomputed links
-//   - CURIE declarations with user-wins merging
-//   - Dual-mode: global singleton or isolated instances
-//
-// # Quick Start
-//
-//	hal.Register(func(ctx context.Context, u *User) []hal.Link {
-//	    return []hal.Link{{Rel: "self", Href: fmt.Sprintf("/users/%d", u.ID)}}
-//	})
-//
-//	env := hal.Wrap(ctx, &User{ID: 1, Name: "Alice"})
-//	json.Marshal(env) // => {"id":1,"name":"Alice","_links":{"self":{"href":"/users/1"}}}
 package hal
 
 const (
@@ -101,16 +74,20 @@ type Envelope struct {
 type InstanceOption func(*Instance)
 
 // WithStrictMode enables panic on generator mismatches.
-// When enabled, hal.Wrap panics if:
+//
+// It applies only to Instance.Wrap on the generated path. When Data is a
+// non-nil struct or pointer-to-struct, Wrap panics if:
 //
 //  1. You pass a value type T but registered a generator for *T
-//  2. You pass a type with no registered generator
+//  2. No generator is registered for the exact type
 //
-// This helps catch type mismatch errors during development.
+// Static links, WrapRaw, WrapPrecomputed, WrapPrecomputedLinks, nil data, and
+// non-struct values bypass these checks. Strict mode does not validate links
+// or JSON.
 //
 // # Example
 //
-//	inst := hal.New(hal.WithStrictMode()) // panics on mismatches
+//	inst := hal.New(hal.WithStrictMode()) // panics on generator mismatches
 func WithStrictMode() InstanceOption {
 	return func(i *Instance) {
 		i.strictMode = true

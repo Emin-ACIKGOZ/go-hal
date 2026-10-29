@@ -4,8 +4,9 @@
 // Package hal implements the Hypertext Application Language (HAL) for JSON.
 //
 // It provides a mechanism to wrap existing Go structs in an envelope that
-// injects standard HAL "_links" and "_embedded" fields without requiring
-// changes to the underlying data models.
+// injects HAL "_links" without requiring changes to the underlying data
+// models. CollectionPage also emits the project-specific "_embedded.items"
+// convention; arbitrary embedded resources are not exposed.
 //
 // The package relies on a central or instance-based registry to map Go types
 // to link generation functions. It supports CURIEs (Compact URIs), reusable

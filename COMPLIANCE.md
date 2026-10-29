@@ -41,7 +41,7 @@ according to draft-11.
 | Precomputed links | Supported | Validated once with `CompilePrecomputedLinks`; reusable handles with `WrapPrecomputedLinks`. |
 | JSON duplicate-key protection | Partial | Checked for precomputed link input and scanner helpers; arbitrary user state is not re-scanned for duplicate keys. |
 | Reserved-field protection | Supported | Top-level `_links` / `_embedded` in user data, including escaped keys, are rejected with `ErrHALFieldConflict`. |
-| `AddEmbedded` helper | Out of scope | Embed via a struct field or the `_embedded`-aware collection convention. |
+| `AddEmbedded` helper | Out of scope | No public helper. `Collection` emits the project `_embedded.items` convention; top-level `_embedded` in wrapped user data is rejected. |
 | Media-type helpers | Out of scope | Use `application/vnd.hal+json` or your negotiated profile. |
 | URI / RFC 6570 template validation | Out of scope | `href` values are strings; template syntax is not validated. |
 | Hard NCName validation for CURIE names | Out of scope | Names must be non-empty and whitespace-free, but are not restricted to NCName. |

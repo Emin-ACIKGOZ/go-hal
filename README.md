@@ -74,8 +74,9 @@ following `encoding/json` semantics.
 * **Code Generation** — no OpenAPI-to-Go or Go-to-OpenAPI generation.
 * **Router Integration** — URL construction and HTTP methods remain yours.
 * **Implicit Auto-Discovery** — links are generated only for registered types.
-* **`AddEmbedded` Helpers** — embed resources through your own struct field or
-  the collection convention below.
+* **`AddEmbedded` Helpers** — arbitrary embedded resources are not exposed.
+  `Collection` emits the project-specific `_embedded.items` convention below;
+  top-level `_embedded` in wrapped user data is rejected.
 * **Media-Type Negotiation** — choose and negotiate the media type in your
   handlers.
 
@@ -320,9 +321,9 @@ publishes an advisory `benchstat` comparison; it does not fail builds.
 2. User data must not contain top-level `_links` or `_embedded`; this includes
    escaped spellings such as `\u005flinks`. Conflicts return
    `ErrHALFieldConflict`.
-3. Duplicate JSON keys are detected in precomputed link input and by the
-   serializer's scanner. Arbitrary user state is not re-scanned for duplicate
-   keys after the encoder produces it; use a strict encoder if that matters.
+3. Precomputed link input is scanned for duplicate JSON keys. Arbitrary user
+   state is not re-scanned for duplicate keys after the encoder produces it;
+   use a strict encoder if that matters.
 4. `href` is required on Link Objects. URI syntax, RFC 6570 templates, and link
    relation registries are not validated.
 5. Static and precomputed envelopes are immutable. `AddLink` on them returns
