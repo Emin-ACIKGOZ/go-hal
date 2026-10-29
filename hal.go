@@ -1,19 +1,23 @@
 // Copyright (c) 2025-2026 Emin Salih Açıkgöz
 // SPDX-License-Identifier: MIT
 
-// Package hal provides a high-performance HAL (Hypertext Application Language) implementation.
+// Package hal provides a HAL (Hypertext Application Language) serializer for Go.
 //
 // # Overview
 //
-// go-hal is a zero-reflection, allocation-efficient HAL serialization library for Go. It wraps your
-// Go structs in HAL Envelopes, injecting _links and _embedded metadata during JSON
-// serialization without intermediate allocations.
+// go-hal wraps Go values in HAL envelopes and injects _links and _embedded
+// metadata during JSON serialization. It targets the supported subset of
+// draft-kelly-json-hal-11, an expired IETF Informational draft rather than an
+// RFC. See COMPLIANCE.md for the support matrix and validation boundaries.
+//
+// Data that marshals to null, typed-nil pointers, and empty objects are
+// normalized to an empty resource. Root arrays and scalars are rejected.
 //
 // # Key Features
 //
-//   - Zero reflection at runtime (type-safe closures)
-//   - Pre-computed links for maximum performance
-//   - Full HAL spec compliance (draft-kelly-json-hal)
+//   - Typed link generators (the deprecated reflective registration still uses reflection)
+//   - Validated, reusable precomputed links
+//   - CURIE declarations with user-wins merging
 //   - Dual-mode: global singleton or isolated instances
 //
 // # Quick Start
@@ -76,7 +80,10 @@ type Link struct {
 //	inst := hal.New()
 //	env := inst.Wrap(ctx, &MyStruct{...})
 //
-// The Envelope implements json.Marshaler and will inject HAL metadata automatically.
+// Envelope implements json.Marshaler with a value receiver, so both Envelope and
+// *Envelope marshal as HAL resources. AddLink remains pointer-only. Static and
+// precomputed envelopes reject AddLink with ErrAddLinkPrecomputed. An Envelope
+// may be marshaled repeatedly or concurrently while it is not being mutated.
 type Envelope struct {
 	Data            any            // The user's struct
 	instance        *Instance      // The registry instance to use

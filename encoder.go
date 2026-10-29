@@ -441,8 +441,13 @@ func (e *Envelope) computeLinks(ctx context.Context) {
 }
 
 // AddLink appends a link to the envelope.
-// If a link with the same Relation (Rel) already exists, it is converted to a slice
-// of links as per the HAL specification.
+// If a link with the same Relation (Rel) already exists, it is converted to a
+// slice of links as per HAL relation multiplicity.
+//
+// AddLink is a pointer method. On static or precomputed envelopes it does not
+// add the link and defers ErrAddLinkPrecomputed to marshaling. An empty or
+// whitespace-only relation is also deferred as an error. It is not safe to call
+// AddLink concurrently with marshaling.
 func (e *Envelope) AddLink(l Link) {
 	if e.premanaged {
 		if e.err == nil {

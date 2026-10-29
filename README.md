@@ -1,8 +1,16 @@
 # go-hal
 
-A high-performance, strictly compliant [HAL (Hypertext Application Language)](https://stateless.group/hal_specification.html) library for Go. It focuses on zero-reflection runtime execution, type safety, and allocation-efficient HAL augmentation during JSON serialization.
+A HAL (Hypertext Application Language) serializer for Go. It wraps Go values in
+an envelope and injects `_links` and `_embedded` during JSON marshaling, with
+typed link generators, reusable precomputed links, CURIEs, and an optional
+OpenAPI adapter.
 
-**Target Audience:** This library is designed for senior Go developers building high-throughput microservices where HAL compliance and allocation-efficient JSON serialization are non-negotiable. It is not intended for beginners or those looking for an "all-in-one" web framework.
+The implementation targets the supported subset of
+`draft-kelly-json-hal-11` (an expired IETF Informational draft, not an RFC).
+Compliance is deliberately scoped: see [COMPLIANCE.md](COMPLIANCE.md) for the
+support matrix, validation boundaries, and the list of features that are out of
+scope. In particular, `application/hal+json` is not an IANA-registered media
+type; the registered vendor type is `application/vnd.hal+json`.
 
 ## Minimal Example
 
@@ -25,7 +33,7 @@ type User struct {
 }
 
 func init() {
-	// 1. Register: Define links for *User (must be pointer type)
+	// Register a generator for *User.
 	hal.Register(func(ctx context.Context, u *User) []hal.Link {
 		return []hal.Link{
 			{Rel: "self", Href: fmt.Sprintf("/users/%d", u.ID)},
@@ -34,11 +42,9 @@ func init() {
 }
 
 func main() {
-	// 2. Wrap: Create the HAL envelope
 	user := &User{ID: 101, Name: "Alice"}
 	response := hal.Wrap(context.Background(), user)
 
-	// 3. Marshal: HAL metadata injection occurs during marshaling
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(response); err != nil {
@@ -56,60 +62,126 @@ func main() {
 }
 ```
 
+Both `Envelope` values and `*Envelope` pointers marshal as HAL resources.
+`AddLink` remains a pointer method. A nil `*Envelope` marshals as JSON `null`,
+following `encoding/json` semantics.
+
 ## Non-Goals
 
-To maintain speed, predictability, and simplicity, `go-hal` explicitly **does not** support:
+`go-hal` does not provide:
 
-* **Client-side Navigation**
-  This is a server-side serialization library only.
-
-* **Code Generation**
-  No Go structs are generated from OpenAPI, and no OpenAPI is generated from Go code.
-
-* **Router Integration**
-  Routes, HTTP methods, and URL construction are your responsibility. No Gin/Chi/Fiber inference.
-
-* **Implicit Auto-Discovery**
-  Links are added *only* when you explicitly register a generator for a type.
+* **Client-side Navigation** — this is a server-side serialization library.
+* **Code Generation** — no OpenAPI-to-Go or Go-to-OpenAPI generation.
+* **Router Integration** — URL construction and HTTP methods remain yours.
+* **Implicit Auto-Discovery** — links are generated only for registered types.
+* **`AddEmbedded` Helpers** — embed resources through your own struct field or
+  the collection convention below.
+* **Media-Type Negotiation** — choose and negotiate the media type in your
+  handlers.
 
 ## Features
 
-* **Zero-Reflection Runtime**
-  Generators are compiled into type-safe closures at registration time. No `reflect.Call` in the hot path.
-
-* **Byte-Splicing Performance**
-  Injects `_links` and `_embedded` directly into JSON output without allocating intermediate maps.
-
-* **Strict HAL Semantics**
-  Correct handling of single vs. multiple links per relation, and object-vs-array polymorphism.
-
-* **Dual-Mode API**
-  Use a global singleton for convenience or isolated instances for unit testing.
+* **Typed Generators** — the generic `Register` / `RegisterInstance` API binds
+  generators without `reflect.Call` at runtime. The deprecated
+  `Instance.RegisterInstance(any)` form still uses reflection.
+* **HAL Link Semantics** — one relation value is an object; repeated values
+  become an array of objects.
+* **Dual-Mode API** — a global singleton for convenience or isolated instances
+  for unit testing.
+* **Validated Precomputed Links** — compile once, reuse across envelopes and
+  instances.
+* **CURIE Support** — registered prefixes and user declarations are merged with
+  user-wins precedence; invalid or duplicate declarations are rejected.
+* **Defensive JSON Handling** — reserved HAL keys, escaped reserved keys,
+  duplicate keys in precomputed input, invalid UTF-8, and non-object roots are
+  rejected before output is produced.
 
 ## Strict Mode
 
-By default, `hal.Wrap` is permissive: if no generator is found for a type, the data is returned as-is.
+By default, `hal.Wrap` is permissive: if no generator is found for a type, the
+data is returned without generated links.
 
-**Strict Mode** exists to catch developer mistakes early. When enabled, it panics if:
+**Strict Mode** catches generator mismatches on the generated path. It panics
+when:
 
 1. You wrap a value type `T` but registered a generator for `*T`.
-2. You wrap a type for which no generator exists at all.
+2. You wrap a struct value or pointer with no registered generator.
 
-Enable it during development or testing:
+Static and precomputed envelopes do not invoke generators, so they bypass these
+checks:
 
 ```go
 hal.DefaultInstance = hal.New(hal.WithStrictMode())
 ```
 
+## Collections
+
+`CollectionPage` and `Collection` are a project convention, not part of HAL:
+
+```go
+page := inst.Collection(ctx, users, total, hal.Link{Rel: "self", Href: "/users"})
+```
+
+`count` and `total` are always serialized, so `total: 0` stays observable. Empty
+`_links` and `_embedded` maps are omitted. Embedded items are wrapped through
+the instance, so they keep their own links.
+
+## Precomputed Links
+
+There are two entry points:
+
+```go
+// Validates and copies on every call. Convenient for one-off input.
+env := inst.WrapPrecomputed(ctx, user, linksJSON)
+
+// Validate once, then reuse. The handle is immutable and instance-independent.
+compiled, err := hal.CompilePrecomputedLinks(linksJSON)
+if err != nil {
+	return err
+}
+env := inst.WrapPrecomputedLinks(user, compiled)
+```
+
+`CompilePrecomputedLinks` owns its bytes: mutating the input slice afterward does
+not affect the handle. A nil handle has `WrapRaw` semantics, while a non-nil zero
+handle means an empty link set. A hand-built handle whose JSON was never
+validated is rejected at marshal time. Static and precomputed envelopes reject
+`AddLink` with `ErrAddLinkPrecomputed`; use a generated or raw envelope if you
+need to add links dynamically.
+
+`RegisterStatic` serializes links once per type. It panics for a nil instance, a
+nil or non-pointer target, empty relations, or invalid/duplicate CURIE
+declarations. Registered CURIEs resolve at wrap time, so late registrations and
+cross-instance reuse work as expected.
+
+## CURIEs
+
+```go
+inst.RegisterCurie("acme", "https://docs.example.com/rels/{rel}")
+```
+
+When a relation such as `acme:widget` is present, the matching registered prefix
+is emitted in a `curies` array. Unknown prefixes keep the relation but produce
+no declaration. User-supplied `curies` declarations win over registered
+declarations with the same name. Duplicate names within one source return
+`ErrDuplicateCurie`; empty or whitespace-bearing names and empty hrefs return
+`ErrInvalidCurie`.
+
+Generated declarations set `templated: true`. User declarations are not required
+to set it, and `href` template syntax is not validated (see
+[RFC 6570](https://www.rfc-editor.org/rfc/rfc6570); validation is out of scope).
+
 ## OpenAPI Adapter (`hal/openapi`)
 
-The optional `hal/openapi` package bridges HAL with OpenAPI 3.0 schemas using `kin-openapi`.
+The optional adapter augments OpenAPI 3.0 schemas using `kin-openapi`.
 
 ### What it does
 
-* Injects valid HAL `_links` and `_embedded` schemas into existing OpenAPI components
-* Models HAL link polymorphism (`Link | []Link`) correctly using `oneOf`
-* Allows contract-first teams to document HAL responses without hand-writing boilerplate
+* Injects a HAL `_links` / `_embedded` schema into existing components
+* Models `Link | []Link` with `oneOf`
+* Preserves an existing custom `Link` schema
+* Marks HAL collection fields read-only and tolerates nil documents/schemas
+* Models the `_embedded.items` collection convention
 
 ### What it does *not* do
 
@@ -117,26 +189,22 @@ The optional `hal/openapi` package bridges HAL with OpenAPI 3.0 schemas using `k
 * It does **not** validate runtime responses
 * It does **not** infer links from registered generators
 
-### Example
-
 ```go
 import (
 	openapi "github.com/Emin-ACIKGOZ/go-hal/openapi"
 )
 
-// Using kin-openapi
 adapter := openapi.New(doc)
 adapter.InjectLinkSchema()
-adapter.MakeResource(userSchema) // Augments schema with HAL fields
+adapter.MakeResource(userSchema)
 ```
 
 ## Migration Guide
 
-This guide helps migrate from other HAL libraries to go-hal.
-
 ### From raff/halgo (Go)
 
 **Before (halgo):**
+
 ```go
 type User struct {
     halgo.Links
@@ -151,6 +219,7 @@ json.Marshal(user)
 ```
 
 **After (go-hal):**
+
 ```go
 type User struct {
     ID   int    `json:"id"`
@@ -168,6 +237,7 @@ json.Marshal(env)
 ### From pyhalboy (Python)
 
 **Before (pyhalboy):**
+
 ```python
 resource = halboy.Resource()
 resource.set_link('self', '/users/1')
@@ -175,6 +245,7 @@ resource.set_property('name', 'Alice')
 ```
 
 **After (go-hal):**
+
 ```go
 hal.Register(func(ctx context.Context, u *User) []hal.Link {
     return []hal.Link{{Rel: "self", Href: fmt.Sprintf("/users/%d", u.ID)}}
@@ -187,6 +258,7 @@ json.Marshal(env)
 ### From Spring HATEOAS (Java)
 
 **Before (Spring):**
+
 ```java
 User user = new User();
 user.setId(1);
@@ -196,6 +268,7 @@ ControllerLinkBuilder.linkTo(UserController.class)
 ```
 
 **After (go-hal):**
+
 ```go
 hal.Register(func(ctx context.Context, u *User) []hal.Link {
     return []hal.Link{{Rel: "self", Href: "/users/1"}}
@@ -209,115 +282,54 @@ json.Marshal(env)
 
 | Feature | Other Libraries | go-hal |
 |---------|----------------|--------|
-| Reflection | Required | Zero at runtime |
+| Reflection | Often required | Typed generators avoid `reflect.Call`; reflection is used for registration and the deprecated API |
 | Link injection | At creation | At JSON marshal |
-| Dependencies | Multiple | go-json only |
-| Type Safety | Dynamic | Compile-time verified |
+| Dependencies | Varies | `goccy/go-json` for encoding; optional `kin-openapi` adapter |
+| Type Safety | Dynamic | Compile-time checked typed generators |
 
-## Performance Tuning
+## Performance
 
-go-hal provides three optimization levels. Use the baseline for correctness; optimize only if profiling shows HAL injection is a bottleneck.
+HAL injection necessarily serializes your data and builds link metadata. The
+exact cost depends on the payload, encoder, link count, and whether CURIEs are
+resolved. Do not rely on fixed numbers from another machine: measure your own
+path.
 
-### Performance Comparison
-
-All benchmarks include JSON marshaling. Measurements are ns/op on amd64 Linux.
-
-| Method | ns/op | vs Baseline | Best For |
-|--------|-------|------------|----------|
-| **Register** (dynamic) | 5,960 | baseline | Links that depend on instance data |
-| **RegisterStatic** | 2,008 | 66% faster | Links fixed per type |
-| **WrapPrecomputed** | 1,759 | 70% faster | Pre-serialized links (cached/batch) |
-| Raw JSON (no HAL) | 659 | — | Performance ceiling (not applicable) |
-
-**Note on hand-coded HAL:** Hand-writing HAL response structs is ~4.6x faster than go-hal's baseline (1,289 ns/op), but requires manual struct maintenance, offers no type safety for link generators, and is error-prone in large codebases. go-hal's cost is justified for maintainability.
-
-### Optimization Levels
-
-#### Level 1: Baseline (Default)
-Use Register() for dynamic links that depend on runtime data.
-
-```go
-hal.Register(func(ctx context.Context, u *User) []hal.Link {
-    return []hal.Link{{Rel: "self", Href: fmt.Sprintf("/users/%d", u.ID)}}
-})
-env := hal.Wrap(ctx, u)
+```sh
+go test -run='^$' -bench=. -benchmem -count=10 ./...
 ```
 
-#### Level 2: Static Pre-computed
-Use RegisterStatic() for links that are the same per type (just varying IDs).
+The three approaches are:
 
-```go
-inst := hal.New()
-hal.RegisterStatic(inst, &User{}, []hal.Link{{Rel: "self", Href: "/users"}})
+1. **Generated links** (`Register` / `Wrap`): flexible, per-request links.
+2. **Static links** (`RegisterStatic`): serialized once per type; best for links
+   that do not vary per instance.
+3. **Compiled precomputed links** (`CompilePrecomputedLinks` +
+   `WrapPrecomputedLinks`): validate once and reuse; best when links are produced
+   in a separate pass or cache. `WrapPrecomputed` is the safe one-shot form and
+   pays validation plus a copy on every call.
 
-env := inst.Wrap(ctx, &User{ID: 42})
-// Automatically uses pre-computed _links
-```
+CURIE resolution and reserved-field checks still run at wrap/marshal time, so
+precomputed links are not a blanket "zero-cost" path. The pull-request workflow
+publishes an advisory `benchstat` comparison; it does not fail builds.
 
-#### Level 3: Maximum Performance
-Use WrapPrecomputed() when you pre-serialize links yourself.
+## Constraints and Validation
 
-```go
-links := []byte(`{"self":{"href":"/users/42"}}`)
-env := inst.WrapPrecomputed(ctx, user, links)
-```
-
-This bypasses all link generation for maximum throughput.
-
-### Memory Optimization
-
-go-hal's byte-splicing avoids intermediate allocations:
-
-| Benchmark | Allocations per Op |
-|-----------|-----------------|
-| Baseline | 14 |
-| RegisterStatic | 5 |
-| WrapPrecomputed | 5 |
-
-### When to Optimize
-
-1. **RegisterStatic**: Use when links are identical for every instance of a type (rare). Saves ~3,900 ns/op per resource.
-2. **WrapPrecomputed**: Use when you generate links in a separate pass (e.g., caching layer, batch API). Saves ~4,200 ns/op per resource.
-
-**Rule of thumb:** Optimize only if profiling shows HAL injection >5% of request latency. For most APIs, baseline performance is acceptable (6 µs per resource).
-
-## Performance & Constraints
-
-This library uses a deliberate **byte-splicing** technique to merge your struct's JSON output with HAL metadata.
-
-```mermaid
-graph TD
-    subgraph Data Preparation
-    S[User Struct] --> J[json.Marshal]
-    J --> B[Data Bytes: {...}]
-    end
-
-    subgraph HAL Injection
-    B --> C{Start '{'?}
-    C -- Yes --> SP[Splice: Remove last '}']
-    SP --> COMMA[Append ',']
-    COMMA --> META[Append '_links' / '_embedded']
-    META --> END[Append '}']
-    end
-
-    subgraph Result
-    END --> FINAL[Final HAL JSON]
-    end
-```
-
-### Constraints
-
-1. Your data **must** marshal to a JSON object (`{...}`)
-   Root arrays or primitives are not valid HAL resources.
-
-2. Your data **must not** be `nil`
-   (unless you intentionally want an empty HAL response).
-
-### Debugging Tip
-
-If you encounter invalid JSON (e.g. `{,"_links":...}`), inspect the raw JSON output of your data struct.
-`go-hal` relies on detecting the opening `{` and closing `}` of your payload.
-
+1. Data must marshal to a JSON object (`{...}`) or `null`. `nil`, typed-nil
+   pointers, and empty objects are normalized to an empty resource. Root arrays
+   and scalars are rejected.
+2. User data must not contain top-level `_links` or `_embedded`; this includes
+   escaped spellings such as `\u005flinks`. Conflicts return
+   `ErrHALFieldConflict`.
+3. Duplicate JSON keys are detected in precomputed link input and by the
+   serializer's scanner. Arbitrary user state is not re-scanned for duplicate
+   keys after the encoder produces it; use a strict encoder if that matters.
+4. `href` is required on Link Objects. URI syntax, RFC 6570 templates, and link
+   relation registries are not validated.
+5. Static and precomputed envelopes are immutable. `AddLink` on them returns
+   `ErrAddLinkPrecomputed` from marshaling. An empty relation is also a deferred
+   error.
+6. `Instance` registration is concurrency-safe. An `Envelope` may be marshaled
+   concurrently only if it is not mutated.
 
 ## License
 

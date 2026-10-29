@@ -143,13 +143,13 @@ func RegisterInstance[T any](i *Instance, gen func(context.Context, *T) []Link) 
 }
 
 // RegisterStatic registers pre-computed links for a type.
-// Links are serialized once at registration time, providing ~60% performance improvement
-// over runtime generator calls. Best for static links that don't change per request.
+// Links are serialized once at registration time and resolve registered CURIEs
+// at wrap time. Best for links that do not change per resource instance.
 //
-// # Performance
-//
-// Pre-computed links bypass generator invocation and JSON serialization on every request.
-// This is optimal for links like "self" hrefs that only depend on the resource ID.
+// It panics for a nil instance, a nil or non-pointer target, an empty relation,
+// or invalid/duplicate CURIE declarations. A typed-nil pointer target such as
+// (*T)(nil) is accepted. Passing no links registers an empty link set that
+// suppresses generators and emits no _links.
 //
 // # Example
 //
@@ -271,13 +271,9 @@ func (i *Instance) registerReflect(gen any) {
 }
 
 // Wrap creates a HAL Envelope with computed links.
-// It first checks for pre-computed links (via RegisterStatic), then falls back to generators.
-// This is the primary method for wrapping data in HAL envelopes.
-//
-// # Automatic Optimization
-//
-// If RegisterStatic was called for the data's type, links are pre-computed and this method
-// automatically uses them, providing ~60% better performance.
+// It first checks for pre-computed links (via RegisterStatic), then falls back
+// to generators. If static links were registered for the data's type, those
+// links take precedence and generators are not called.
 func (i *Instance) Wrap(ctx context.Context, data any) *Envelope {
 	t := reflect.TypeOf(data)
 
@@ -298,24 +294,23 @@ func (i *Instance) Wrap(ctx context.Context, data any) *Envelope {
 	return e
 }
 
-// WrapPrecomputed wraps data with pre-serialized links JSON.
-// This is the absolute fastest option - bypasses all generator calls.
-//
-// # Performance
-//
-// Provides ~65% better performance than Wrap by eliminating:
-//   - Generator invocation
-//   - JSON serialization of links
+// WrapPrecomputed wraps data with caller-supplied links JSON.
+// It validates and copies the input and computes the CURIE prefixes on every
+// call. For a hot path, validate once with CompilePrecomputedLinks and reuse the
+// handle with WrapPrecomputedLinks.
 //
 // # Input Format
 //
-// linksJSON must be a JSON object containing link relations:
+// linksJSON may be raw link relations or the wrapped form:
 //
 //	{"self": {"href": "/users/42"}}
+//	{"_links": {"self": {"href": "/users/42"}}}
+//
+// Invalid input produces a deferred error during marshaling.
 //
 // # Example
 //
-//	links := []byte(`{"self":{"href":"/users/42"}})
+//	links := []byte(`{"self":{"href":"/users/42"}}`)
 //	env := inst.WrapPrecomputed(ctx, &User{ID: 42}, links)
 //	json.Marshal(env)
 func (i *Instance) WrapPrecomputed(_ context.Context, data any, linksJSON []byte) *Envelope {
