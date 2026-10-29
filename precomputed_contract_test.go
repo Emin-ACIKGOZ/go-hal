@@ -100,6 +100,62 @@ func TestPrecomputedContract_RejectsInvalidLinks(t *testing.T) {
 	}
 }
 
+func TestPrecomputedContract_RejectsInvalidLinkShapes(t *testing.T) {
+	invalid := [][]byte{
+		[]byte(`{"self":{}}`),
+		[]byte(`{"self":null}`),
+		[]byte(`{"self":"/x"}`),
+		[]byte(`{"self":{"href":42}}`),
+		[]byte(`{"self":[{"href":42}]}`),
+		[]byte(`{"self":["/x"]}`),
+		[]byte(`{"self":{"href":"/x"},"":{"href":"/y"}}`),
+		[]byte(`{"curies":{"name":"acme","href":"https://docs/{rel}"}}`),
+		[]byte(`{"curies":[{"href":"https://docs/{rel}"}]}`),
+		[]byte(`{"curies":[{"name":42,"href":"https://docs/{rel}"}]}`),
+		[]byte(`{"_links":{"self":{}}}`),
+		[]byte(`{"_links":{"self":{"href":42}}}`),
+		[]byte(`{"_links":{"self":{"href":"/x"}},"extra":{"href":"/y"}}`),
+	}
+
+	for _, links := range invalid {
+		t.Run(string(links), func(t *testing.T) {
+			b, err := marshalPrecomputed(t, map[string]any{"id": 1}, links)
+			if err == nil {
+				t.Fatalf("expected error for links %s, got %s", links, b)
+			}
+			if len(b) != 0 {
+				t.Fatalf("error returned partial output: %s", b)
+			}
+			if !strings.Contains(err.Error(), "precomputed") {
+				t.Fatalf("error %q does not identify precomputed links", err)
+			}
+		})
+	}
+}
+
+func TestPrecomputedContract_AcceptsLinkArraysAndCuries(t *testing.T) {
+	links := []byte(`{
+		"item":[{"href":"/items/1"},{"href":"/items/2"}],
+		"curies":[{"name":"acme","href":"https://docs.example/rels/{rel}","templated":true}],
+		"acme:widget":{"href":"/widgets/1"}
+	}`)
+	want := []byte(`{
+		"id":1,
+		"_links":{
+			"item":[{"href":"/items/1"},{"href":"/items/2"}],
+			"curies":[{"name":"acme","href":"https://docs.example/rels/{rel}","templated":true}],
+			"acme:widget":{"href":"/widgets/1"}
+		}
+	}`)
+
+	b, err := marshalPrecomputed(t, map[string]any{"id": 1}, links)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNoDuplicateKeys(t, b)
+	assertJSONEqual(t, b, want)
+}
+
 func TestPrecomputedContract_RejectsNonObjectData(t *testing.T) {
 	links := []byte(`{"self":{"href":"/x"}}`)
 	dataCases := []struct {

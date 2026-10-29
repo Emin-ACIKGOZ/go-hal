@@ -283,8 +283,8 @@ func normalizePrecomputedLinks(linksJSON []byte) ([]byte, error) {
 		return nil, fmt.Errorf("hal: precomputed links contain duplicate JSON keys: %w", err)
 	}
 
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(linksJSON, &fields); err != nil {
+	var fields map[string]stdjson.RawMessage
+	if err := stdjson.Unmarshal(linksJSON, &fields); err != nil {
 		return nil, fmt.Errorf("hal: precomputed links must be a JSON object: %w", err)
 	}
 	if fields == nil {
@@ -292,11 +292,21 @@ func normalizePrecomputedLinks(linksJSON []byte) ([]byte, error) {
 	}
 
 	if rawLinks, ok := fields["_links"]; ok {
-		var links map[string]json.RawMessage
-		if err := json.Unmarshal(rawLinks, &links); err != nil || links == nil {
+		if len(fields) != 1 {
+			return nil, errors.New("hal: wrapped precomputed links must contain only _links")
+		}
+		var links map[string]stdjson.RawMessage
+		if err := stdjson.Unmarshal(rawLinks, &links); err != nil || links == nil {
 			return nil, errors.New("hal: precomputed _links must be a JSON object")
 		}
+		if err := validatePrecomputedLinkRelations(links); err != nil {
+			return nil, err
+		}
 		return linksJSON, nil
+	}
+
+	if err := validatePrecomputedLinkRelations(fields); err != nil {
+		return nil, err
 	}
 
 	wrapped := make([]byte, 0, len(linksJSON)+precomputedLinksPrefixLen+precomputedLinksWrapperLen)
@@ -304,6 +314,82 @@ func normalizePrecomputedLinks(linksJSON []byte) ([]byte, error) {
 	wrapped = append(wrapped, linksJSON...)
 	wrapped = append(wrapped, '}')
 	return wrapped, nil
+}
+
+// validatePrecomputedLinkRelations checks the HAL link relation shape before
+// pre-serialized links are trusted for byte splicing.
+func validatePrecomputedLinkRelations(links map[string]stdjson.RawMessage) error {
+	for rel, raw := range links {
+		if rel == "" {
+			return errors.New("hal: precomputed link relation must not be empty")
+		}
+		if err := validatePrecomputedRelationValue(rel, raw); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validatePrecomputedRelationValue(rel string, raw stdjson.RawMessage) error {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return fmt.Errorf("hal: precomputed relation %q must be a link object or array of link objects", rel)
+	}
+
+	if trimmed[0] == '[' {
+		var items []stdjson.RawMessage
+		if err := stdjson.Unmarshal(trimmed, &items); err != nil {
+			return fmt.Errorf("hal: precomputed relation %q must be an array of link objects: %w", rel, err)
+		}
+		for i, item := range items {
+			if err := validatePrecomputedLinkObject(rel, item); err != nil {
+				return fmt.Errorf("hal: precomputed relation %q element %d: %w", rel, i, err)
+			}
+			if rel == "curies" {
+				if err := requireStringField(item, "name"); err != nil {
+					return fmt.Errorf("hal: precomputed curie %q element %d: %w", rel, i, err)
+				}
+			}
+		}
+		return nil
+	}
+
+	if rel == "curies" {
+		return errors.New("hal: precomputed curies relation must be an array of link objects")
+	}
+	return validatePrecomputedLinkObject(rel, trimmed)
+}
+
+func validatePrecomputedLinkObject(rel string, raw stdjson.RawMessage) error {
+	var obj map[string]stdjson.RawMessage
+	if err := stdjson.Unmarshal(raw, &obj); err != nil || obj == nil {
+		return fmt.Errorf("hal: precomputed relation %q must contain link objects", rel)
+	}
+	hrefRaw, ok := obj["href"]
+	if !ok {
+		return fmt.Errorf("hal: precomputed relation %q link is missing href", rel)
+	}
+	var href string
+	if err := stdjson.Unmarshal(hrefRaw, &href); err != nil {
+		return fmt.Errorf("hal: precomputed relation %q href must be a string", rel)
+	}
+	return nil
+}
+
+func requireStringField(raw stdjson.RawMessage, field string) error {
+	var obj map[string]stdjson.RawMessage
+	if err := stdjson.Unmarshal(raw, &obj); err != nil || obj == nil {
+		return errors.New("must be a link object")
+	}
+	value, ok := obj[field]
+	if !ok {
+		return fmt.Errorf("link object is missing %s", field)
+	}
+	var str string
+	if err := stdjson.Unmarshal(value, &str); err != nil {
+		return fmt.Errorf("link object %s must be a string", field)
+	}
+	return nil
 }
 
 // WrapRaw creates an envelope without computing links.
