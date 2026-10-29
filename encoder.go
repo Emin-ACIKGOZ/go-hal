@@ -47,7 +47,7 @@ func (e Envelope) MarshalJSON() ([]byte, error) {
 
 func (e Envelope) marshalPrecomputed() ([]byte, error) {
 	if e.Data == nil {
-		return e.precomputedJSON, nil
+		return bytes.Clone(e.precomputedJSON), nil
 	}
 	dataBytes, err := json.Marshal(e.Data)
 	if err != nil {
@@ -58,7 +58,7 @@ func (e Envelope) marshalPrecomputed() ([]byte, error) {
 		return nil, err
 	}
 	if isDataNull || isDataEmptyObj {
-		return e.precomputedJSON, nil
+		return bytes.Clone(e.precomputedJSON), nil
 	}
 	if err := validateDataJSON(dataBytes); err != nil {
 		return nil, err

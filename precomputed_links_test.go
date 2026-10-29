@@ -131,6 +131,26 @@ func TestWrapPrecomputedLinks_HandleSemantics(t *testing.T) {
 	})
 }
 
+func TestMarshalJSON_OutputMutationDoesNotCorruptCachedLinks(t *testing.T) {
+	links, err := CompilePrecomputedLinks([]byte(`{"self":{"href":"/x"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := New().WrapPrecomputedLinks(nil, links)
+
+	first, err := env.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	first[0] = 'x' // Direct callers may mutate returned bytes.
+
+	second, err := env.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertJSONEqual(t, second, []byte(`{"_links":{"self":{"href":"/x"}}}`))
+}
+
 func TestWrapPrecomputedLinks_ReuseAndConcurrency(t *testing.T) {
 	type User struct {
 		ID int `json:"id"`
