@@ -174,34 +174,64 @@ type jsonFrame struct {
 	wantKey bool
 }
 
-func findDuplicateJSONKeys(data []byte) error {
+func newJSONTokenScanner(data []byte) *stdjson.Decoder {
 	dec := stdjson.NewDecoder(bytes.NewReader(data))
-	var stack []jsonFrame
+	dec.UseNumber()
+	return dec
+}
+
+type jsonDuplicateScanner struct {
+	stack    []jsonFrame
+	seenRoot bool
+	done     bool
+}
+
+func findDuplicateJSONKeys(data []byte) error {
+	dec := newJSONTokenScanner(data)
+	var scanner jsonDuplicateScanner
 
 	for {
 		tok, err := dec.Token()
 		if errors.Is(err, io.EOF) {
-			if len(stack) != 0 {
-				return errors.New("unexpected EOF")
-			}
-			return nil
+			return scanner.finish()
 		}
 		if err != nil {
 			return err
 		}
-
-		if delim, ok := tok.(stdjson.Delim); ok {
-			stack, err = scanJSONDelimiter(stack, delim)
-			if err != nil {
-				return err
-			}
-			continue
-		}
-		err = scanJSONObjectToken(stack, tok)
-		if err != nil {
+		if err := scanner.scan(tok); err != nil {
 			return err
 		}
 	}
+}
+
+func (s *jsonDuplicateScanner) finish() error {
+	if !s.seenRoot || !s.done {
+		return errors.New("unexpected EOF")
+	}
+	return nil
+}
+
+func (s *jsonDuplicateScanner) scan(tok stdjson.Token) error {
+	if s.done {
+		return errors.New("unexpected trailing JSON value")
+	}
+	if len(s.stack) == 0 {
+		s.seenRoot = true
+	}
+
+	var err error
+	if delim, ok := tok.(stdjson.Delim); ok {
+		s.stack, err = scanJSONDelimiter(s.stack, delim)
+	} else {
+		err = scanJSONObjectToken(s.stack, tok)
+	}
+	if err != nil {
+		return err
+	}
+	if len(s.stack) == 0 {
+		s.done = true
+	}
+	return nil
 }
 
 func scanJSONDelimiter(stack []jsonFrame, delim stdjson.Delim) ([]jsonFrame, error) {
