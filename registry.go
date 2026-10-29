@@ -93,6 +93,7 @@ func Register[T any](gen func(context.Context, *T) []Link) {
 
 // RegisterCurie registers a CURIE (Compact URI) prefix on the DefaultInstance.
 // CURIEs allow shortened link relations like "acme:widget" that expand to full URIs.
+// It panics if prefix is empty or contains whitespace, or if href is empty.
 //
 // # Example
 //
@@ -117,7 +118,12 @@ func Wrap(ctx context.Context, data any) *Envelope {
 
 // RegisterCurie adds a CURIE (Compact URI) mapping to the instance.
 // These are used to shorten link relations in the output JSON.
+//
+// It panics if prefix is empty or contains whitespace, or if href is empty.
 func (i *Instance) RegisterCurie(prefix, href string) {
+	if err := validateCurieDeclarations([]Link{{Name: prefix, Href: href}}); err != nil {
+		panic(fmt.Sprintf("hal: RegisterCurie: %v", err))
+	}
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.curies[prefix] = href
@@ -235,9 +241,9 @@ func wrapStaticLinks(linksMap map[string]any) []byte {
 
 // PrecomputedLinks holds validated, wrapped pre-serialized links JSON.
 //
-// The JSON field is read-only and owned by the handle. Its zero value means an
-// empty link set with no _links field. Use CompilePrecomputedLinks to build a
-// handle from caller-supplied JSON.
+// The JSON field is read-only by convention and owned by the handle. Do not
+// mutate it after compilation. Its zero value means an empty link set with no
+// _links field. Use CompilePrecomputedLinks to build a handle from caller JSON.
 type PrecomputedLinks struct {
 	JSON      []byte   // wrapped {"_links":...}; read-only; owned by handle
 	prefixes  []string // sorted unique CURIE prefixes used by relations
@@ -441,11 +447,27 @@ func validatePrecomputedLinkRelations(links map[string]stdjson.RawMessage) error
 }
 
 func validatePrecomputedCuries(raw stdjson.RawMessage) error {
-	var declarations []Link
-	if err := stdjson.Unmarshal(raw, &declarations); err != nil {
-		return errors.New("must be an array of link objects")
+	_, _, err := decodePrecomputedCurieRaw(raw)
+	return err
+}
+
+func decodePrecomputedCurieRaw(raw stdjson.RawMessage) ([]stdjson.RawMessage, []Link, error) {
+	var rawDeclarations []stdjson.RawMessage
+	if err := stdjson.Unmarshal(raw, &rawDeclarations); err != nil {
+		return nil, nil, errors.New("must be an array of link objects")
 	}
-	return validateCurieDeclarations(declarations)
+	declarations := make([]Link, 0, len(rawDeclarations))
+	for i, item := range rawDeclarations {
+		var declaration Link
+		if err := stdjson.Unmarshal(item, &declaration); err != nil {
+			return nil, nil, fmt.Errorf("element %d: %w", i, err)
+		}
+		declarations = append(declarations, declaration)
+	}
+	if err := validateCurieDeclarations(declarations); err != nil {
+		return nil, nil, err
+	}
+	return rawDeclarations, declarations, nil
 }
 
 type jsonValueKind uint8
@@ -664,13 +686,17 @@ func mergePrecomputedCuries(linksJSON []byte, registered []Link) ([]byte, error)
 		return nil, errors.New("hal: precomputed _links must be a JSON object")
 	}
 
+	var userRaw []stdjson.RawMessage
 	var user []Link
 	if raw, ok := links[relCuries]; ok {
-		if err := stdjson.Unmarshal(raw, &user); err != nil {
+		var err error
+		userRaw, user, err = decodePrecomputedCurieRaw(raw)
+		if err != nil {
 			return nil, fmt.Errorf("hal: precomputed curies: %w", err)
 		}
 	}
-	merged, err := mergeCuries(user, registered)
+
+	merged, err := appendMissingCuries(userRaw, user, registered)
 	if err != nil {
 		return nil, err
 	}
@@ -686,4 +712,25 @@ func mergePrecomputedCuries(linksJSON []byte, registered []Link) ([]byte, error)
 	}
 	document[fieldLinks] = encodedLinks
 	return json.Marshal(document)
+}
+
+func appendMissingCuries(userRaw []stdjson.RawMessage, user, registered []Link) ([]stdjson.RawMessage, error) {
+	seen := make(map[string]struct{}, len(user)+len(registered))
+	for _, declaration := range user {
+		seen[declaration.Name] = struct{}{}
+	}
+
+	merged := append([]stdjson.RawMessage(nil), userRaw...)
+	for _, declaration := range registered {
+		if _, exists := seen[declaration.Name]; exists {
+			continue
+		}
+		encoded, err := json.Marshal(declaration)
+		if err != nil {
+			return nil, err
+		}
+		merged = append(merged, encoded)
+		seen[declaration.Name] = struct{}{}
+	}
+	return merged, nil
 }

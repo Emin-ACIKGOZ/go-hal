@@ -128,6 +128,35 @@ func TestCurieResolution_PrecomputedUserDeclarationWins(t *testing.T) {
 	}
 }
 
+func TestCurieResolution_PreservesUnknownUserFields(t *testing.T) {
+	links, err := CompilePrecomputedLinks([]byte(`{
+		"curies":[{"name":"user","href":"https://user.example/{rel}","x-ext":"keep"}],
+		"acme:widget":{"href":"/widgets/1"}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := New()
+	inst.RegisterCurie("acme", "https://registered.example/{rel}")
+
+	b, err := json.Marshal(inst.WrapPrecomputedLinks(&curieResolutionUser{ID: 1}, links))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, ok := decodeJSONValue(t, b).(map[string]any)
+	if !ok {
+		t.Fatal("document is not an object")
+	}
+	curies := relationObjects(t, root, "curies")
+	if len(curies) != 2 {
+		t.Fatalf("got %d curies, want 2", len(curies))
+	}
+	user := curies[0]
+	if user["name"] != "user" || user["x-ext"] != "keep" {
+		t.Fatalf("user declaration = %#v, want unknown field preserved", user)
+	}
+}
+
 func relationExists(t *testing.T, data []byte, rel string) bool {
 	t.Helper()
 	root, ok := decodeJSONValue(t, data).(map[string]any)

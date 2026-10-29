@@ -180,6 +180,27 @@ func TestCurieContract_RejectsDuplicateUserDeclarations(t *testing.T) {
 	}
 }
 
+func TestRegisterCurie_RejectsInvalidDeclarations(t *testing.T) {
+	tests := []struct {
+		name   string
+		prefix string
+		href   string
+	}{
+		{name: "empty prefix", prefix: "", href: "https://example.com/{rel}"},
+		{name: "whitespace prefix", prefix: "ac me", href: "https://example.com/{rel}"},
+		{name: "empty href", prefix: "acme", href: ""},
+		{name: "whitespace href", prefix: "acme", href: "  "},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assertPanics(t, "hal: RegisterCurie: ", func() {
+				New().RegisterCurie(tc.prefix, tc.href)
+			})
+		})
+	}
+}
+
 func TestCurieContract_UnknownPrefixEmitsNothing(t *testing.T) {
 	inst := New()
 	inst.RegisterCurie("acme", "https://docs.example.com/rels/{rel}")
