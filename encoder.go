@@ -27,8 +27,8 @@ var ErrHALFieldConflict = errors.New("hal: data already contains reserved HAL fi
 func (e Envelope) MarshalJSON() ([]byte, error) {
 	// Caller-supplied precomputed links are validated at construction time;
 	// surface that error rather than emitting corrupted JSON.
-	if e.precomputedErr != nil {
-		return nil, e.precomputedErr
+	if e.err != nil {
+		return nil, e.err
 	}
 
 	// OPTIMIZATION: Fast path for pre-computed JSON

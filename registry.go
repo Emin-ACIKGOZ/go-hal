@@ -181,12 +181,32 @@ func RegisterStatic(i *Instance, target any, links []Link) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	// Store as precomputed for this type
-	i.precomputed[targetType] = &PrecomputedLinks{JSON: fullJSON}
+	i.precomputed[targetType] = &PrecomputedLinks{
+		JSON:      fullJSON,
+		prefixes:  linkRelationPrefixes(links),
+		validated: true,
+	}
 }
 
-// PrecomputedLinks stores pre-computed links JSON
+// PrecomputedLinks holds validated, wrapped pre-serialized links JSON.
+//
+// The JSON field is read-only and owned by the handle. Its zero value means an
+// empty link set with no _links field. Use CompilePrecomputedLinks to build a
+// handle from caller-supplied JSON.
 type PrecomputedLinks struct {
-	JSON []byte
+	JSON      []byte   // wrapped {"_links":...}; read-only; owned by handle
+	prefixes  []string // sorted unique CURIE prefixes used by relations
+	validated bool
+}
+
+// CompilePrecomputedLinks validates and copies caller-supplied link JSON once,
+// producing a handle that can be reused across envelopes and instances.
+func CompilePrecomputedLinks(linksJSON []byte) (*PrecomputedLinks, error) {
+	normalized, prefixes, err := normalizePrecomputedLinks(linksJSON)
+	if err != nil {
+		return nil, err
+	}
+	return &PrecomputedLinks{JSON: normalized, prefixes: prefixes, validated: true}, nil
 }
 
 // introspection hook for the unsafe method
@@ -221,11 +241,7 @@ func (i *Instance) Wrap(ctx context.Context, data any) *Envelope {
 	pre, hasPre := i.precomputed[t]
 	i.mu.RUnlock()
 	if hasPre && pre != nil {
-		return &Envelope{
-			Data:            data,
-			instance:        i,
-			precomputedJSON: pre.JSON,
-		}
+		return i.wrapPrecomputedHandle(data, pre)
 	}
 
 	e := &Envelope{
@@ -258,27 +274,51 @@ func (i *Instance) Wrap(ctx context.Context, data any) *Envelope {
 //	env := inst.WrapPrecomputed(ctx, &User{ID: 42}, links)
 //	json.Marshal(env)
 func (i *Instance) WrapPrecomputed(_ context.Context, data any, linksJSON []byte) *Envelope {
-	normalized, err := normalizePrecomputedLinks(linksJSON)
-	return &Envelope{
-		Data:            data,
-		instance:        i,
-		precomputedJSON: normalized,
-		precomputedErr:  err,
+	links, err := CompilePrecomputedLinks(linksJSON)
+	if err != nil {
+		return &Envelope{Data: data, instance: i, err: err, premanaged: true}
 	}
+	return i.wrapPrecomputedHandle(data, links)
+}
+
+// WrapPrecomputedLinks wraps data with an already-compiled link handle. The
+// handle is reusable across envelopes and instances; its JSON is not copied or
+// revalidated. A nil handle has WrapRaw semantics, while a non-nil zero handle
+// means an empty link set.
+func (i *Instance) WrapPrecomputedLinks(data any, links *PrecomputedLinks) *Envelope {
+	return i.wrapPrecomputedHandle(data, links)
+}
+
+var errPrecomputedUnvalidated = errors.New("hal: unvalidated precomputed links handle")
+
+func (i *Instance) wrapPrecomputedHandle(data any, links *PrecomputedLinks) *Envelope {
+	if links == nil {
+		return i.WrapRaw(data)
+	}
+	e := &Envelope{Data: data, instance: i, premanaged: true}
+	switch {
+	case len(links.JSON) == 0:
+		// Empty precomputed set: suppress generators and emit no _links.
+	case !links.validated:
+		e.err = errPrecomputedUnvalidated
+	default:
+		e.precomputedJSON = links.JSON
+	}
+	return e
 }
 
 // normalizePrecomputedLinks wraps raw link relations in a top-level "_links"
 // object. It accepts the already-wrapped form used internally by RegisterStatic
 // so callers can pass either representation. Invalid input is reported instead
 // of being spliced into the output.
-func normalizePrecomputedLinks(linksJSON []byte) ([]byte, error) {
+func normalizePrecomputedLinks(linksJSON []byte) ([]byte, []string, error) {
 	linksJSON = bytes.TrimSpace(linksJSON)
 	if len(linksJSON) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	fields, err := decodePrecomputedObject(linksJSON)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if rawLinks, ok := fields[fieldLinks]; ok {
@@ -286,9 +326,9 @@ func normalizePrecomputedLinks(linksJSON []byte) ([]byte, error) {
 	}
 
 	if err := validatePrecomputedLinkRelations(fields); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return wrapPrecomputedLinks(linksJSON), nil
+	return wrapPrecomputedLinks(linksJSON), rawRelationPrefixes(fields), nil
 }
 
 func decodePrecomputedObject(linksJSON []byte) (map[string]stdjson.RawMessage, error) {
@@ -313,19 +353,19 @@ func normalizeWrappedPrecomputedLinks(
 	linksJSON []byte,
 	fields map[string]stdjson.RawMessage,
 	rawLinks stdjson.RawMessage,
-) ([]byte, error) {
+) ([]byte, []string, error) {
 	if len(fields) != 1 {
-		return nil, errors.New("hal: wrapped precomputed links must contain only _links")
+		return nil, nil, errors.New("hal: wrapped precomputed links must contain only _links")
 	}
 	var links map[string]stdjson.RawMessage
 	if err := stdjson.Unmarshal(rawLinks, &links); err != nil || links == nil {
-		return nil, errors.New("hal: precomputed _links must be a JSON object")
+		return nil, nil, errors.New("hal: precomputed _links must be a JSON object")
 	}
 	if err := validatePrecomputedLinkRelations(links); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Own the wrapped form too: callers may reuse or mutate their buffer.
-	return bytes.Clone(linksJSON), nil
+	return bytes.Clone(linksJSON), rawRelationPrefixes(links), nil
 }
 
 func wrapPrecomputedLinks(linksJSON []byte) []byte {

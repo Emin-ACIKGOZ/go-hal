@@ -153,7 +153,7 @@ func FuzzWrapPrecomputed(f *testing.F) {
 	f.Fuzz(func(t *testing.T, linksJSON, data []byte) {
 		linksDuplicateFree := findDuplicateKeys(linksJSON) == nil
 		dataDuplicateFree := findDuplicateKeys(data) == nil
-		_, linksErr := normalizePrecomputedLinks(linksJSON)
+		_, _, linksErr := normalizePrecomputedLinks(linksJSON)
 
 		inst := New()
 		env := inst.WrapPrecomputed(context.Background(), json.RawMessage(data), linksJSON)

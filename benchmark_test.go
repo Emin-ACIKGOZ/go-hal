@@ -330,6 +330,37 @@ func BenchmarkWrapPrecomputed(b *testing.B) {
 	}
 }
 
+func BenchmarkWrapPrecomputedLinks(b *testing.B) {
+	inst := New()
+	u := benchmarkData()
+	links, err := CompilePrecomputedLinks([]byte(`{"self":{"href":"/users/42"}}`))
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		env := inst.WrapPrecomputedLinks(u, links)
+		if _, err := json.Marshal(env); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkCompilePrecomputedLinks(b *testing.B) {
+	linksJSON := []byte(`{"self":{"href":"/users/42"}}`)
+
+	b.ResetTimer()
+	var err error
+	for i := 0; i < b.N; i++ {
+		_, err = CompilePrecomputedLinks(linksJSON)
+	}
+	b.StopTimer()
+	if err != nil {
+		b.Fatal(err)
+	}
+}
+
 func BenchmarkRegisterStatic(b *testing.B) {
 	inst := New()
 	ctx := context.Background()

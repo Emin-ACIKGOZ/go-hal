@@ -4,8 +4,10 @@
 package hal
 
 import (
+	stdjson "encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"unicode"
 )
@@ -17,6 +19,47 @@ var ErrDuplicateCurie = errors.New("hal: duplicate CURIE declaration")
 // ErrInvalidCurie is returned when a CURIE declaration has an empty or
 // whitespace-bearing name, or an empty href.
 var ErrInvalidCurie = errors.New("hal: invalid CURIE declaration")
+
+// relationPrefix returns the CURIE prefix in a relation such as "acme:widget".
+func relationPrefix(rel string) (string, bool) {
+	idx := strings.IndexByte(rel, ':')
+	if idx <= 0 {
+		return "", false
+	}
+	return rel[:idx], true
+}
+
+func sortedPrefixSet(set map[string]struct{}) []string {
+	if len(set) == 0 {
+		return nil
+	}
+	prefixes := make([]string, 0, len(set))
+	for prefix := range set {
+		prefixes = append(prefixes, prefix)
+	}
+	sort.Strings(prefixes)
+	return prefixes
+}
+
+func linkRelationPrefixes(links []Link) []string {
+	set := make(map[string]struct{})
+	for _, link := range links {
+		if prefix, ok := relationPrefix(link.Rel); ok {
+			set[prefix] = struct{}{}
+		}
+	}
+	return sortedPrefixSet(set)
+}
+
+func rawRelationPrefixes(links map[string]stdjson.RawMessage) []string {
+	set := make(map[string]struct{}, len(links))
+	for rel := range links {
+		if prefix, ok := relationPrefix(rel); ok {
+			set[prefix] = struct{}{}
+		}
+	}
+	return sortedPrefixSet(set)
+}
 
 func validateCurieDeclarations(declarations []Link) error {
 	seen := make(map[string]struct{}, len(declarations))
