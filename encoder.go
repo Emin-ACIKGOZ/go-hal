@@ -115,12 +115,13 @@ func splicePrecomputed(data, linksJSON []byte) []byte {
 	linksJSON = bytes.TrimSpace(linksJSON)
 
 	// linksJSON is already {"_links":{...}}
-	// We need to combine data and linksJSON
-	if len(data) == 0 || bytes.Equal(data, []byte("null")) || isEmptyJSONObject(data) {
-		return linksJSON
-	}
+	// We need to combine data and linksJSON. An empty link set never replaces
+	// data, even when the data object is empty.
 	if len(linksJSON) == 0 || isEmptyJSONObject(linksJSON) {
 		return data
+	}
+	if len(data) == 0 || bytes.Equal(data, []byte("null")) || isEmptyJSONObject(data) {
+		return linksJSON
 	}
 	if !hasJSONObjectDelimiters(data) || !hasJSONObjectDelimiters(linksJSON) {
 		return data
@@ -139,6 +140,7 @@ func hasJSONObjectDelimiters(b []byte) bool {
 
 // isEmptyJSONObject reports whether b is an object containing only whitespace.
 func isEmptyJSONObject(b []byte) bool {
+	b = bytes.TrimSpace(b)
 	if !hasJSONObjectDelimiters(b) {
 		return false
 	}

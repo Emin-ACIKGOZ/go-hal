@@ -51,6 +51,18 @@ func TestSplicePrecomputed_WhitespaceObjects(t *testing.T) {
 	}
 }
 
+func TestSplicePrecomputed_BothEmptyObjects(t *testing.T) {
+	dataForms := []string{`{}`, `{} `, `{ }`, "{\n}"}
+	linkForms := [][]byte{nil, []byte(`{}`), []byte(`{ }`), []byte("{\n}")}
+
+	for _, data := range dataForms {
+		for _, links := range linkForms {
+			result := splicePrecomputed([]byte(data), links)
+			assertJSONEqual(t, result, []byte(`{}`))
+		}
+	}
+}
+
 func TestSplicePrecomputed_NullAndEmpty(t *testing.T) {
 	links := []byte(`{"_links":{"self":{"href":"/x"}}}`)
 	assertJSONEqual(t, splicePrecomputed([]byte("null"), links), links)
