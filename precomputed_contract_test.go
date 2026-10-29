@@ -6,6 +6,7 @@ package hal
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -33,6 +34,44 @@ func TestPrecomputedContract_AcceptsRawAndWrappedForms(t *testing.T) {
 			}
 			assertNoDuplicateKeys(t, b)
 			assertJSONEqual(t, b, want)
+		})
+	}
+}
+
+func TestPrecomputedContract_WhitespaceObjects(t *testing.T) {
+	links := []byte(`{"self":{"href":"/x"}}`)
+	want := []byte(`{"_links":{"self":{"href":"/x"}}}`)
+
+	for _, data := range []any{
+		json.RawMessage(`{ }`),
+		json.RawMessage("{\n}"),
+	} {
+		t.Run("empty data", func(t *testing.T) {
+			b, err := marshalPrecomputed(t, data, links)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertJSONEqual(t, b, want)
+		})
+	}
+
+	for _, emptyLinks := range []string{`{ }`, "{\n}"} {
+		t.Run("empty links", func(t *testing.T) {
+			b, err := marshalPrecomputed(t, map[string]any{"id": 1}, []byte(emptyLinks))
+			if err != nil {
+				t.Fatal(err)
+			}
+			root, ok := decodeJSONValue(t, b).(map[string]any)
+			if !ok {
+				t.Fatal("document is not an object")
+			}
+			linksObject, ok := root["_links"].(map[string]any)
+			if !ok || len(linksObject) != 0 {
+				t.Fatalf("_links = %#v, want empty object", root["_links"])
+			}
+			if got := root["id"]; fmt.Sprint(got) != "1" {
+				t.Errorf("id = %#v, want 1", got)
+			}
 		})
 	}
 }

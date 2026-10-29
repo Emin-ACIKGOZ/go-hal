@@ -109,13 +109,16 @@ func splicePrecomputed(data, linksJSON []byte) []byte {
 
 	// linksJSON is already {"_links":{...}}
 	// We need to combine data and linksJSON
-	if len(data) == 0 || bytes.Equal(data, []byte("{}")) || bytes.Equal(data, []byte("null")) {
+	if len(data) == 0 || bytes.Equal(data, []byte("null")) || isEmptyJSONObject(data) {
 		return linksJSON
 	}
 	if len(linksJSON) == 0 || isEmptyJSONObject(linksJSON) {
 		return data
 	}
-	// Remove trailing } from data and , from linksJSON
+	if !hasJSONObjectDelimiters(data) || !hasJSONObjectDelimiters(linksJSON) {
+		return data
+	}
+	// Remove trailing } from data and { from linksJSON
 	result := make([]byte, 0, len(data)+len(linksJSON)-jsonTrailingChars)
 	result = append(result, data[:len(data)-1]...)
 	result = append(result, ',')
@@ -123,9 +126,13 @@ func splicePrecomputed(data, linksJSON []byte) []byte {
 	return result
 }
 
+func hasJSONObjectDelimiters(b []byte) bool {
+	return len(b) >= 2 && b[0] == '{' && b[len(b)-1] == '}'
+}
+
 // isEmptyJSONObject reports whether b is an object containing only whitespace.
 func isEmptyJSONObject(b []byte) bool {
-	if len(b) < 2 || b[0] != '{' || b[len(b)-1] != '}' {
+	if !hasJSONObjectDelimiters(b) {
 		return false
 	}
 	return len(bytes.TrimSpace(b[1:len(b)-1])) == 0
@@ -157,8 +164,8 @@ func checkJSONStructure(b []byte) (bool, bool, error) {
 		return false, false, errors.New("hal: data must be a JSON object to splice")
 	}
 
-	// Check for empty object "{}"
-	if len(trimmed) == 2 && trimmed[1] == '}' {
+	// Check for an empty object, including whitespace-only bodies.
+	if isEmptyJSONObject(trimmed) {
 		return false, true, nil
 	}
 

@@ -32,3 +32,40 @@ func TestSplicePrecomputed_BothPresent(t *testing.T) {
 	result := splicePrecomputed(data, links)
 	assertJSONEqual(t, result, []byte(`{"id":1,"_links":{"self":{}}}`))
 }
+
+func TestSplicePrecomputed_WhitespaceObjects(t *testing.T) {
+	links := []byte(`{"_links":{"self":{"href":"/x"}}}`)
+
+	for _, data := range []string{`{ }`, "{\n}", "{\t \r\n}"} {
+		t.Run("empty data "+data, func(t *testing.T) {
+			result := splicePrecomputed([]byte(data), links)
+			assertJSONEqual(t, result, links)
+		})
+	}
+
+	for _, emptyLinks := range []string{`{ }`, "{\n}", "{\t \r\n}"} {
+		t.Run("empty links "+emptyLinks, func(t *testing.T) {
+			result := splicePrecomputed([]byte(`{"id":1}`), []byte(emptyLinks))
+			assertJSONEqual(t, result, []byte(`{"id":1}`))
+		})
+	}
+}
+
+func TestSplicePrecomputed_NullAndEmpty(t *testing.T) {
+	links := []byte(`{"_links":{"self":{"href":"/x"}}}`)
+	assertJSONEqual(t, splicePrecomputed([]byte("null"), links), links)
+	assertJSONEqual(t, splicePrecomputed(nil, links), links)
+	assertJSONEqual(t, splicePrecomputed([]byte(`{"id":1}`), nil), []byte(`{"id":1}`))
+}
+
+func TestCheckJSONStructure_WhitespaceObject(t *testing.T) {
+	for _, data := range []string{`{ }`, "{\n}", "{\t\r\n}"} {
+		isNull, isEmpty, err := checkJSONStructure([]byte(data))
+		if err != nil {
+			t.Fatalf("%q: %v", data, err)
+		}
+		if isNull || !isEmpty {
+			t.Fatalf("%q: isNull=%t isEmpty=%t, want empty object", data, isNull, isEmpty)
+		}
+	}
+}
