@@ -4,6 +4,7 @@
 package hal
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -54,7 +55,7 @@ func (e *Envelope) MarshalJSON() ([]byte, error) {
 func splicePrecomputed(data, linksJSON []byte) []byte {
 	// linksJSON is already {"_links":{...}}
 	// We need to combine data and linksJSON
-	if len(data) == 0 || string(data) == "{}" {
+	if len(data) == 0 || string(data) == "{}" || bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
 		return linksJSON
 	}
 	if len(linksJSON) == 0 {
@@ -78,23 +79,25 @@ func (e *Envelope) marshalData() ([]byte, error) {
 // checkJSONStructure returns (isNull, isEmptyObject, error).
 // Optimized: uses bytes comparison to avoid string allocation.
 func checkJSONStructure(b []byte) (bool, bool, error) {
-	if len(b) == 0 {
+	trimmed := bytes.TrimSpace(b)
+	if len(trimmed) == 0 {
+		return true, false, nil
+	}
+
+	// Null data (including typed nil pointers and json.RawMessage("null"))
+	// is normalized to an empty resource.
+	if bytes.Equal(trimmed, []byte("null")) {
 		return true, false, nil
 	}
 
 	// Must start with '{'
-	if b[0] != '{' {
+	if trimmed[0] != '{' {
 		return false, false, errors.New("hal: data must be a JSON object to splice")
 	}
 
 	// Check for empty object "{}"
-	if len(b) == 2 && b[1] == '}' {
+	if len(trimmed) == 2 && trimmed[1] == '}' {
 		return false, true, nil
-	}
-
-	// Check for null - bytes comparison (no allocation)
-	if len(b) >= 4 && b[0] == 'n' && b[1] == 'u' && b[2] == 'l' && b[3] == 'l' {
-		return true, false, nil
 	}
 
 	return false, false, nil
