@@ -6,6 +6,7 @@ package hal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -87,6 +88,95 @@ func TestCurieContract_SortsMultiplePrefixes(t *testing.T) {
 	}
 	if got := curies[1]["name"]; got != "zeta" {
 		t.Errorf("curies[1].name = %#v, want zeta", got)
+	}
+}
+
+func TestCurieContract_UserDeclarationWins(t *testing.T) {
+	inst := New()
+	inst.RegisterCurie("acme", "https://registered.example/{rel}")
+
+	root := marshalCurieLinks(t, inst,
+		Link{Rel: "curies", Name: "acme", Href: "https://user.example/{rel}", Templated: true},
+		Link{Rel: "acme:widget", Href: "/widgets/1"},
+	)
+
+	curies := relationObjects(t, root, "curies")
+	if len(curies) != 1 {
+		t.Fatalf("got %d curies, want 1", len(curies))
+	}
+	if got := curies[0]["href"]; got != "https://user.example/{rel}" {
+		t.Fatalf("curies[0].href = %#v, want user declaration", got)
+	}
+}
+
+func TestCurieContract_SingleUserDeclarationBecomesArray(t *testing.T) {
+	root := marshalCurieLinks(t, New(),
+		Link{Rel: "curies", Name: "one", Href: "https://example.com/one/{rel}"},
+	)
+
+	links, ok := root["_links"].(map[string]any)
+	if !ok {
+		t.Fatalf("_links has type %T, want object", root["_links"])
+	}
+	curies, ok := links["curies"].([]any)
+	if !ok {
+		t.Fatalf("curies has type %T, want array", links["curies"])
+	}
+	if len(curies) != 1 {
+		t.Fatalf("got %d curies, want 1", len(curies))
+	}
+}
+
+func TestCurieContract_RejectsInvalidUserDeclarations(t *testing.T) {
+	tests := []struct {
+		name string
+		link Link
+		want error
+	}{
+		{
+			name: "empty name",
+			link: Link{Rel: "curies", Href: "https://example.com/{rel}"},
+			want: ErrInvalidCurie,
+		},
+		{
+			name: "whitespace name",
+			link: Link{Rel: "curies", Name: "ac me", Href: "https://example.com/{rel}"},
+			want: ErrInvalidCurie,
+		},
+		{
+			name: "empty href",
+			link: Link{Rel: "curies", Name: "acme"},
+			want: ErrInvalidCurie,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env := New().WrapRaw(&curieContractUser{ID: 1})
+			env.AddLink(tc.link)
+
+			b, err := json.Marshal(env)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("error = %v (output %s), want %v", err, b, tc.want)
+			}
+			if len(b) != 0 {
+				t.Fatalf("error returned partial output: %s", b)
+			}
+		})
+	}
+}
+
+func TestCurieContract_RejectsDuplicateUserDeclarations(t *testing.T) {
+	env := New().WrapRaw(&curieContractUser{ID: 1})
+	env.AddLink(Link{Rel: "curies", Name: "acme", Href: "https://example.com/one/{rel}"})
+	env.AddLink(Link{Rel: "curies", Name: "acme", Href: "https://example.com/two/{rel}"})
+
+	b, err := json.Marshal(env)
+	if !errors.Is(err, ErrDuplicateCurie) {
+		t.Fatalf("error = %v (output %s), want ErrDuplicateCurie", err, b)
+	}
+	if len(b) != 0 {
+		t.Fatalf("error returned partial output: %s", b)
 	}
 }
 

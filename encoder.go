@@ -352,14 +352,20 @@ func (e Envelope) marshalMeta() ([]byte, error) {
 	// Build a local view instead of mutating e.links: an Envelope may be
 	// marshaled more than once, including concurrently.
 	links := e.links
+	var generated []Link
 	if e.instance != nil {
-		if curies := e.instance.resolveCuries(e.links); len(curies) > 0 {
-			links = make(map[string]any, len(e.links)+1)
-			for rel, value := range e.links {
-				links[rel] = value
-			}
-			links[relCuries] = mergeCuries(links[relCuries], curies)
+		generated = e.instance.resolveCuries(e.links)
+	}
+	if _, hasUser := e.links[relCuries]; hasUser || len(generated) > 0 {
+		links = make(map[string]any, len(e.links)+1)
+		for rel, value := range e.links {
+			links[rel] = value
 		}
+		merged, err := mergeCuries(links[relCuries], generated)
+		if err != nil {
+			return nil, err
+		}
+		links[relCuries] = merged
 	}
 
 	// Fast path: no links
@@ -379,33 +385,6 @@ func (e Envelope) marshalMeta() ([]byte, error) {
 	}
 
 	return json.Marshal(map[string]any{fieldLinks: links})
-}
-
-// mergeCuries appends resolved CURIE declarations to any user-supplied curies
-// relation without nesting relation arrays.
-func mergeCuries(existing any, curies []Link) any {
-	merged := make([]any, 0, len(curies)+1)
-	merged = appendRelationValue(merged, existing)
-	for _, curie := range curies {
-		merged = append(merged, curie)
-	}
-	return merged
-}
-
-func appendRelationValue(dst []any, value any) []any {
-	switch v := value.(type) {
-	case nil:
-		return dst
-	case []any:
-		return append(dst, v...)
-	case []Link:
-		for _, link := range v {
-			dst = append(dst, link)
-		}
-		return dst
-	default:
-		return append(dst, v)
-	}
 }
 
 func spliceJSON(data []byte, meta []byte, isDataNull, isDataEmptyObj bool) []byte {

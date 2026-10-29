@@ -346,7 +346,20 @@ func validatePrecomputedLinkRelations(links map[string]stdjson.RawMessage) error
 			return err
 		}
 	}
+	if raw, ok := links[relCuries]; ok {
+		if err := validatePrecomputedCuries(raw); err != nil {
+			return fmt.Errorf("hal: precomputed curies: %w", err)
+		}
+	}
 	return nil
+}
+
+func validatePrecomputedCuries(raw stdjson.RawMessage) error {
+	var declarations []Link
+	if err := stdjson.Unmarshal(raw, &declarations); err != nil {
+		return errors.New("must be an array of link objects")
+	}
+	return validateCurieDeclarations(declarations)
 }
 
 type jsonValueKind uint8
@@ -432,11 +445,6 @@ func validatePrecomputedRelationValue(rel string, raw stdjson.RawMessage) error 
 			if err := validatePrecomputedLinkObject(rel, item); err != nil {
 				return fmt.Errorf("hal: precomputed relation %q element %d: %w", rel, i, err)
 			}
-			if rel == relCuries {
-				if err := requireStringField(item, "name"); err != nil {
-					return fmt.Errorf("hal: precomputed curie %q element %d: %w", rel, i, err)
-				}
-			}
 		}
 		return nil
 	}
@@ -483,24 +491,6 @@ func validatePrecomputedLinkObject(rel string, raw stdjson.RawMessage) error {
 func requireJSONKind(raw stdjson.RawMessage, want jsonValueKind) error {
 	if got := linkValueKind(raw); got != want {
 		return fmt.Errorf("value has type %s, want %s", got, want)
-	}
-	return nil
-}
-
-func requireStringField(raw stdjson.RawMessage, field string) error {
-	if linkValueKind(raw) != jsonObject {
-		return errors.New("must be a link object")
-	}
-	var obj map[string]stdjson.RawMessage
-	if err := stdjson.Unmarshal(raw, &obj); err != nil || obj == nil {
-		return errors.New("must be a link object")
-	}
-	value, ok := obj[field]
-	if !ok {
-		return fmt.Errorf("link object is missing %s", field)
-	}
-	if err := requireJSONKind(value, jsonString); err != nil {
-		return fmt.Errorf("link object %s must be a string", field)
 	}
 	return nil
 }
