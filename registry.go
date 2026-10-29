@@ -4,6 +4,7 @@
 package hal
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -269,6 +270,7 @@ func (i *Instance) WrapPrecomputed(_ context.Context, data any, linksJSON []byte
 // so callers can pass either representation. Invalid input is reported instead
 // of being spliced into the output.
 func normalizePrecomputedLinks(linksJSON []byte) ([]byte, error) {
+	linksJSON = bytes.TrimSpace(linksJSON)
 	if len(linksJSON) == 0 {
 		return nil, nil
 	}

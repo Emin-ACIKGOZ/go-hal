@@ -23,6 +23,7 @@ func TestPrecomputedContract_AcceptsRawAndWrappedForms(t *testing.T) {
 	forms := [][]byte{
 		[]byte(`{"self":{"href":"/x"}}`),
 		[]byte(`{"_links":{"self":{"href":"/x"}}}`),
+		[]byte(" \n {\"_links\":{\"self\":{\"href\":\"/x\"}}} \n"),
 	}
 	for _, links := range forms {
 		t.Run(string(links), func(t *testing.T) {

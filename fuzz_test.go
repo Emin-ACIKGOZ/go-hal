@@ -106,6 +106,7 @@ func FuzzLink_AddLink(f *testing.F) {
 
 func FuzzWrapPrecomputed(f *testing.F) {
 	f.Add([]byte(`{"_links":{"self":{"href":"/x"}}}`), []byte(`{"id":1}`))
+	f.Add([]byte(" \n {\"_links\":{\"self\":{\"href\":\"/x\"}}} \n"), []byte(`{"id":1}`))
 	f.Add([]byte(`{"self":{"href":"/x"}}`), []byte(`{"id":1}`))
 	f.Add([]byte(`{}`), []byte(`{}`))
 	f.Add([]byte(`[]`), []byte(`{"id":1}`))
