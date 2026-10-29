@@ -5,6 +5,8 @@ package hal
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -253,34 +255,45 @@ func (i *Instance) Wrap(ctx context.Context, data any) *Envelope {
 //	env := inst.WrapPrecomputed(ctx, &User{ID: 42}, links)
 //	json.Marshal(env)
 func (i *Instance) WrapPrecomputed(_ context.Context, data any, linksJSON []byte) *Envelope {
+	normalized, err := normalizePrecomputedLinks(linksJSON)
 	return &Envelope{
 		Data:            data,
 		instance:        i,
-		precomputedJSON: normalizePrecomputedLinks(linksJSON),
+		precomputedJSON: normalized,
+		precomputedErr:  err,
 	}
 }
 
 // normalizePrecomputedLinks wraps raw link relations in a top-level "_links"
 // object. It accepts the already-wrapped form used internally by RegisterStatic
-// so callers can pass either representation.
-func normalizePrecomputedLinks(linksJSON []byte) []byte {
+// so callers can pass either representation. Invalid input is reported instead
+// of being spliced into the output.
+func normalizePrecomputedLinks(linksJSON []byte) ([]byte, error) {
 	if len(linksJSON) == 0 {
-		return linksJSON
+		return nil, nil
 	}
 
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(linksJSON, &fields); err != nil {
-		return linksJSON
+		return nil, fmt.Errorf("hal: precomputed links must be a JSON object: %w", err)
 	}
-	if _, ok := fields["_links"]; ok {
-		return linksJSON
+	if fields == nil {
+		return nil, errors.New("hal: precomputed links must be a JSON object")
+	}
+
+	if rawLinks, ok := fields["_links"]; ok {
+		var links map[string]json.RawMessage
+		if err := json.Unmarshal(rawLinks, &links); err != nil || links == nil {
+			return nil, errors.New("hal: precomputed _links must be a JSON object")
+		}
+		return linksJSON, nil
 	}
 
 	wrapped := make([]byte, 0, len(linksJSON)+precomputedLinksPrefixLen+precomputedLinksWrapperLen)
 	wrapped = append(wrapped, `{"_links":`...)
 	wrapped = append(wrapped, linksJSON...)
 	wrapped = append(wrapped, '}')
-	return wrapped
+	return wrapped, nil
 }
 
 // WrapRaw creates an envelope without computing links.

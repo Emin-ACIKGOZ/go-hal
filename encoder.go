@@ -17,6 +17,12 @@ import (
 // It serializes the wrapped Data and splices in the HAL "_links" and "_embedded"
 // fields into the resulting JSON object.
 func (e *Envelope) MarshalJSON() ([]byte, error) {
+	// Caller-supplied precomputed links are validated at construction time;
+	// surface that error rather than emitting corrupted JSON.
+	if e.precomputedErr != nil {
+		return nil, e.precomputedErr
+	}
+
 	// OPTIMIZATION: Fast path for pre-computed JSON
 	if e.precomputedJSON != nil {
 		if e.Data == nil {
@@ -25,6 +31,13 @@ func (e *Envelope) MarshalJSON() ([]byte, error) {
 		dataBytes, err := json.Marshal(e.Data)
 		if err != nil {
 			return nil, err
+		}
+		isDataNull, isDataEmptyObj, err := checkJSONStructure(dataBytes)
+		if err != nil {
+			return nil, err
+		}
+		if isDataNull || isDataEmptyObj {
+			return e.precomputedJSON, nil
 		}
 		// Splice data with pre-computed links
 		return splicePrecomputed(dataBytes, e.precomputedJSON), nil

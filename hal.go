@@ -79,6 +79,7 @@ type Envelope struct {
 	links           map[string]any // Computed during marshal
 	embedded        map[string]any // Computed during marshal
 	precomputedJSON []byte         // OPTIMIZATION: pre-serialized links JSON
+	precomputedErr  error          // Validation error for caller-supplied precomputed links
 }
 
 // InstanceOption configures a new HAL Instance.
