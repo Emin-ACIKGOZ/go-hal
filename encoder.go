@@ -33,30 +33,36 @@ func (e *Envelope) MarshalJSON() ([]byte, error) {
 
 	// OPTIMIZATION: Fast path for pre-computed JSON
 	if e.precomputedJSON != nil {
-		if e.Data == nil {
-			return e.precomputedJSON, nil
-		}
-		dataBytes, err := json.Marshal(e.Data)
-		if err != nil {
-			return nil, err
-		}
-		isDataNull, isDataEmptyObj, err := checkJSONStructure(dataBytes)
-		if err != nil {
-			return nil, err
-		}
-		if isDataNull || isDataEmptyObj {
-			return e.precomputedJSON, nil
-		}
-		if !utf8.Valid(dataBytes) {
-			return nil, errors.New("hal: data must be valid UTF-8")
-		}
-		if err := checkReservedHALFields(dataBytes); err != nil {
-			return nil, err
-		}
-		// Splice data with pre-computed links
-		return splicePrecomputed(dataBytes, e.precomputedJSON), nil
+		return e.marshalPrecomputed()
 	}
+	return e.marshalGenerated()
+}
 
+func (e *Envelope) marshalPrecomputed() ([]byte, error) {
+	if e.Data == nil {
+		return e.precomputedJSON, nil
+	}
+	dataBytes, err := json.Marshal(e.Data)
+	if err != nil {
+		return nil, err
+	}
+	isDataNull, isDataEmptyObj, err := checkJSONStructure(dataBytes)
+	if err != nil {
+		return nil, err
+	}
+	if isDataNull || isDataEmptyObj {
+		return e.precomputedJSON, nil
+	}
+	if err := validateDataJSON(dataBytes); err != nil {
+		return nil, err
+	}
+	if err := checkReservedHALFields(dataBytes); err != nil {
+		return nil, err
+	}
+	return splicePrecomputed(dataBytes, e.precomputedJSON), nil
+}
+
+func (e *Envelope) marshalGenerated() ([]byte, error) {
 	// 1. Marshal the underlying data
 	dataBytes, err := e.marshalData()
 	if err != nil {
@@ -68,8 +74,8 @@ func (e *Envelope) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !utf8.Valid(dataBytes) {
-		return nil, errors.New("hal: data must be valid UTF-8")
+	if err := validateDataJSON(dataBytes); err != nil {
+		return nil, err
 	}
 
 	// Reject data that already defines reserved HAL properties; splicing
@@ -88,6 +94,13 @@ func (e *Envelope) MarshalJSON() ([]byte, error) {
 
 	// 4. Combine
 	return spliceJSON(dataBytes, metaBytes, isDataNull, isEmptyObj), nil
+}
+
+func validateDataJSON(data []byte) error {
+	if !utf8.Valid(data) {
+		return errors.New("hal: data must be valid UTF-8")
+	}
+	return nil
 }
 
 func splicePrecomputed(data, linksJSON []byte) []byte {
@@ -155,15 +168,15 @@ func checkJSONStructure(b []byte) (bool, bool, error) {
 // findDuplicateJSONKeys scans for duplicate object member names at any depth.
 // Duplicate names are non-interoperable and cannot be detected after decoding
 // into a map.
+type jsonFrame struct {
+	object  bool
+	keys    map[string]struct{}
+	wantKey bool
+}
+
 func findDuplicateJSONKeys(data []byte) error {
 	dec := stdjson.NewDecoder(bytes.NewReader(data))
-
-	type frame struct {
-		object  bool
-		keys    map[string]struct{}
-		wantKey bool
-	}
-	var stack []frame
+	var stack []jsonFrame
 
 	for {
 		tok, err := dec.Token()
@@ -178,51 +191,68 @@ func findDuplicateJSONKeys(data []byte) error {
 		}
 
 		if delim, ok := tok.(stdjson.Delim); ok {
-			switch delim {
-			case '{':
-				stack = append(stack, frame{
-					object:  true,
-					keys:    make(map[string]struct{}),
-					wantKey: true,
-				})
-			case '[':
-				stack = append(stack, frame{})
-			case '}', ']':
-				if len(stack) == 0 {
-					return errors.New("unbalanced closing delimiter")
-				}
-				stack = stack[:len(stack)-1]
-				if n := len(stack); n > 0 && stack[n-1].object {
-					stack[n-1].wantKey = true
-				}
+			stack, err = scanJSONDelimiter(stack, delim)
+			if err != nil {
+				return err
 			}
 			continue
 		}
-
-		if n := len(stack); n > 0 && stack[n-1].object {
-			top := &stack[n-1]
-			if top.wantKey {
-				key, ok := tok.(string)
-				if !ok {
-					return fmt.Errorf("object key has type %T, want string", tok)
-				}
-				if _, exists := top.keys[key]; exists {
-					return fmt.Errorf("duplicate object key %q", key)
-				}
-				top.keys[key] = struct{}{}
-				top.wantKey = false
-			} else {
-				top.wantKey = true
-			}
+		err = scanJSONObjectToken(stack, tok)
+		if err != nil {
+			return err
 		}
 	}
+}
+
+func scanJSONDelimiter(stack []jsonFrame, delim stdjson.Delim) ([]jsonFrame, error) {
+	switch delim {
+	case '{':
+		return append(stack, jsonFrame{
+			object:  true,
+			keys:    make(map[string]struct{}),
+			wantKey: true,
+		}), nil
+	case '[':
+		return append(stack, jsonFrame{}), nil
+	default:
+		if len(stack) == 0 {
+			return nil, errors.New("unbalanced closing delimiter")
+		}
+		stack = stack[:len(stack)-1]
+		if n := len(stack); n > 0 && stack[n-1].object {
+			stack[n-1].wantKey = true
+		}
+		return stack, nil
+	}
+}
+
+func scanJSONObjectToken(stack []jsonFrame, tok stdjson.Token) error {
+	n := len(stack)
+	if n == 0 || !stack[n-1].object {
+		return nil
+	}
+	top := &stack[n-1]
+	if !top.wantKey {
+		top.wantKey = true
+		return nil
+	}
+	key, ok := tok.(string)
+	if !ok {
+		return fmt.Errorf("object key has type %T, want string", tok)
+	}
+	if _, exists := top.keys[key]; exists {
+		return fmt.Errorf("duplicate object key %q", key)
+	}
+	top.keys[key] = struct{}{}
+	top.wantKey = false
+	return nil
 }
 
 // checkReservedHALFields reports a conflict only when a reserved name appears
 // as a top-level object key. Nested state fields remain ordinary JSON.
 func checkReservedHALFields(data []byte) error {
 	// Cheap pre-check before allocating a token scanner.
-	if !bytes.Contains(data, []byte("_links")) && !bytes.Contains(data, []byte("_embedded")) {
+	if !mayContainReservedHALField(data) {
 		return nil
 	}
 
@@ -237,22 +267,38 @@ func checkReservedHALFields(data []byte) error {
 	}
 
 	for dec.More() {
-		keyToken, err := dec.Token()
-		if err != nil {
-			return fmt.Errorf("hal: inspect data object key: %w", err)
+		if err := checkHALFieldKey(dec); err != nil {
+			return err
 		}
-		key, ok := keyToken.(string)
-		if !ok {
-			return fmt.Errorf("hal: data object key has type %T, want string", keyToken)
-		}
-		if key == "_links" || key == "_embedded" {
-			return fmt.Errorf("%w: %q", ErrHALFieldConflict, key)
-		}
+	}
+	return nil
+}
 
-		var value stdjson.RawMessage
-		if err := dec.Decode(&value); err != nil {
-			return fmt.Errorf("hal: inspect data object value: %w", err)
-		}
+func mayContainReservedHALField(data []byte) bool {
+	return bytes.Contains(data, []byte(fieldLinks)) ||
+		bytes.Contains(data, []byte(fieldEmbedded))
+}
+
+func isReservedHALField(key string) bool {
+	return key == fieldLinks || key == fieldEmbedded
+}
+
+func checkHALFieldKey(dec *stdjson.Decoder) error {
+	keyToken, err := dec.Token()
+	if err != nil {
+		return fmt.Errorf("hal: inspect data object key: %w", err)
+	}
+	key, ok := keyToken.(string)
+	if !ok {
+		return fmt.Errorf("hal: data object key has type %T, want string", keyToken)
+	}
+	if isReservedHALField(key) {
+		return fmt.Errorf("%w: %q", ErrHALFieldConflict, key)
+	}
+
+	var value stdjson.RawMessage
+	if err := dec.Decode(&value); err != nil {
+		return fmt.Errorf("hal: inspect data object value: %w", err)
 	}
 	return nil
 }
@@ -267,27 +313,27 @@ func (e *Envelope) marshalMeta() ([]byte, error) {
 			for rel, value := range e.links {
 				links[rel] = value
 			}
-			links["curies"] = mergeCuries(links["curies"], curies)
+			links[relCuries] = mergeCuries(links[relCuries], curies)
 		}
 	}
 
 	// Fast path: no links
 	if len(links) == 0 {
-		if e.embedded != nil && len(e.embedded) > 0 {
-			return json.Marshal(map[string]any{"_embedded": e.embedded})
+		if len(e.embedded) > 0 {
+			return json.Marshal(map[string]any{fieldEmbedded: e.embedded})
 		}
 		return nil, nil
 	}
 
 	// Only create map if needed
-	if e.embedded != nil && len(e.embedded) > 0 {
+	if len(e.embedded) > 0 {
 		return json.Marshal(map[string]any{
-			"_links":    links,
-			"_embedded": e.embedded,
+			fieldLinks:    links,
+			fieldEmbedded: e.embedded,
 		})
 	}
 
-	return json.Marshal(map[string]any{"_links": links})
+	return json.Marshal(map[string]any{fieldLinks: links})
 }
 
 // mergeCuries appends resolved CURIE declarations to any user-supplied curies
@@ -357,7 +403,7 @@ func (e *Envelope) computeLinks(ctx context.Context) {
 			panic(fmt.Sprintf("hal: strict mode error. Passed value type %v, but generator registered for pointer type %v", t, ptrT))
 		}
 		// Strict check: if it's a struct (or ptr to struct) and no generator exists, panic.
-		if t.Kind() == reflect.Struct || (t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Struct) {
+		if t.Kind() == reflect.Struct || (t.Kind() == reflect.Pointer && t.Elem().Kind() == reflect.Struct) {
 			panic(fmt.Sprintf("hal: strict mode error. No generator registered for type %v", t))
 		}
 	}

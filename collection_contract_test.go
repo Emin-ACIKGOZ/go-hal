@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"testing"
 )
 
@@ -157,7 +158,7 @@ func TestCollectionConvention_SliceVariants(t *testing.T) {
 			if !ok {
 				t.Fatal("collection document is not an object")
 			}
-			if got := fmt.Sprint(root["count"]); got != fmt.Sprint(tc.wantCount) {
+			if got := fmt.Sprint(root["count"]); got != strconv.Itoa(tc.wantCount) {
 				t.Errorf("count = %s, want %d", got, tc.wantCount)
 			}
 			if _, exists := root["total"]; exists != tc.wantTotal {

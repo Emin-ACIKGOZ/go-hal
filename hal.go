@@ -30,6 +30,10 @@ const (
 	jsonTrailingChars          = 2  // } to remove from JSON
 	precomputedLinksPrefixLen  = 10 // len(`{"_links":`)
 	precomputedLinksWrapperLen = 2  // {}
+
+	fieldLinks    = "_links"
+	fieldEmbedded = "_embedded"
+	relCuries     = "curies"
 )
 
 // Link represents a HAL Hypermedia link.

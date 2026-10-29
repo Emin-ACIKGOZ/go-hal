@@ -1,21 +1,12 @@
-# .golangci.yml - Standardized Go Linter Configuration
+# .golangci.yml - Standardized Go Linter Configuration (v2)
+version: "2"
 
 run:
-  # Default timeout for linter
   timeout: 5m
-  # Include test files
   tests: true
 
-output:
-  print-issued-lines: true
-  print-linter-name: true
-
-linters-settings:
-  misspell:
-    locale: US
-
 linters:
-  disable-all: true
+  default: none
   enable:
     # --- Core & Bugs ---
     - bodyclose
@@ -45,7 +36,21 @@ linters:
     # --- Security ---
     - gosec
 
+  settings:
+    misspell:
+      locale: US
+    cyclop:
+      max-complexity: 10
+    goconst:
+      ignore-tests: true
+
+  exclusions:
+    generated: lax
+    rules:
+      - path: _test\.go
+        linters:
+          - cyclop
+
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0

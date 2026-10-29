@@ -230,13 +230,6 @@ func checkLinkHref(link map[string]any) error {
 	return nil
 }
 
-func requireHref(t *testing.T, link map[string]any) {
-	t.Helper()
-	if err := checkLinkHref(link); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // recoverPanic calls fn and reports any panic as a message instead of
 // propagating it.
 func recoverPanic(fn func()) (message string, panicked bool) {
