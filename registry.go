@@ -6,6 +6,7 @@ package hal
 import (
 	"context"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 
@@ -319,19 +320,33 @@ func (i *Instance) resolveCuries(links map[string]any) []Link {
 		return nil
 	}
 
-	var used []Link
+	used := make(map[string]struct{})
 	for rel := range links {
 		if idx := strings.IndexByte(rel, ':'); idx > 0 {
 			prefix := rel[:idx]
-			if href, ok := i.curies[prefix]; ok {
-				used = append(used, Link{
-					Rel:       "curies",
-					Name:      prefix,
-					Href:      href,
-					Templated: true,
-				})
+			if _, ok := i.curies[prefix]; ok {
+				used[prefix] = struct{}{}
 			}
 		}
 	}
-	return used
+	if len(used) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(used))
+	for name := range used {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	curies := make([]Link, 0, len(names))
+	for _, name := range names {
+		curies = append(curies, Link{
+			Rel:       "curies",
+			Name:      name,
+			Href:      i.curies[name],
+			Templated: true,
+		})
+	}
+	return curies
 }
