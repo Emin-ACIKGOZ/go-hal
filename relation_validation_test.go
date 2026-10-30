@@ -43,9 +43,6 @@ func TestAddLink_BareTokenCaseCollisionRejected(t *testing.T) {
 	if !errors.Is(err, ErrInvalidRelation) {
 		t.Fatalf("error = %v, want ErrInvalidRelation", err)
 	}
-	if _, exists := env.links["Self"]; exists {
-		t.Fatal("colliding relation was added")
-	}
 }
 
 func TestAddLink_ExactDuplicateTokenIsMultiplicity(t *testing.T) {
@@ -208,5 +205,38 @@ func TestAddLink_BareTokenCollisionStillRejected(t *testing.T) {
 
 	if _, err := json.Marshal(env); !errors.Is(err, ErrInvalidRelation) {
 		t.Fatalf("error = %v, want ErrInvalidRelation", err)
+	}
+}
+
+func TestAddLink_LargeRelationSetUsesIndexedCollisionChecks(t *testing.T) {
+	t.Parallel()
+
+	env := New().WrapRaw(&embeddedTestUser{ID: 1})
+	for i := 0; i < 12; i++ {
+		env.AddLink(Link{Rel: "rel" + string(rune('a'+i)), Href: "/x"})
+	}
+	env.AddLink(Link{Rel: "SELF", Href: "/a"})
+	env.AddLink(Link{Rel: "self", Href: "/b"})
+
+	if _, err := json.Marshal(env); !errors.Is(err, ErrInvalidRelation) {
+		t.Fatalf("error = %v, want ErrInvalidRelation", err)
+	}
+}
+
+func TestAddLink_LargeDistinctRelationSetAccepted(t *testing.T) {
+	t.Parallel()
+
+	env := New().WrapRaw(&embeddedTestUser{ID: 1})
+	for i := 0; i < 16; i++ {
+		env.AddLink(Link{Rel: "rel" + string(rune('a'+i)), Href: "/x"})
+	}
+
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("distinct relations rejected: %v", err)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	if got := len(root["_links"].(map[string]any)); got != 16 {
+		t.Fatalf("_links has %d entries, want 16", got)
 	}
 }

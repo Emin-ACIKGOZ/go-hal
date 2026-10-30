@@ -129,16 +129,39 @@ func isCuriePrefix(prefix string) bool {
 // Classify returns the lexical relation kind. Callers that know their declared
 // CURIE prefixes should treat non-authority scheme forms as opaque URIs unless
 // the prefix is declared.
+//
+//nolint:cyclop // Fast ASCII path plus the full Unicode path in one classifier.
 func Classify(ref string) Kind {
-	if ref == "" || !utf8.ValidString(ref) || hasControlOrSpace(ref) {
+	if ref == "" {
 		return Invalid
 	}
-	if HasScheme(ref) {
-		_, schemeOK := Scheme(ref)
-		if !schemeOK {
-			return Invalid
+	colon := -1
+	cleanASCII := true
+	for i := 0; i < len(ref); i++ {
+		c := ref[i]
+		if c <= 0x20 || c >= 0x7f {
+			cleanASCII = false
+			break
 		}
-		if _, _, ok := SplitCurie(ref); ok {
+		if c == ':' && colon < 0 {
+			colon = i
+		}
+	}
+	if cleanASCII {
+		if colon < 0 {
+			return Token
+		}
+		return classifyWithColon(ref)
+	}
+	if !utf8.ValidString(ref) || hasControlOrSpace(ref) {
+		return Invalid
+	}
+	return classifyWithColon(ref)
+}
+
+func classifyWithColon(ref string) Kind {
+	if _, ok := Scheme(ref); ok {
+		if _, _, curie := SplitCurie(ref); curie {
 			return Curie
 		}
 		return URI
@@ -186,6 +209,45 @@ func IsToken(ref string) bool {
 		}
 	}
 	return true
+}
+
+// FoldBareToken validates bare-token syntax and returns its ASCII folded key in
+// one pass. It is used for case-collision detection; relative references and
+// extension relations are not bare tokens.
+//
+//nolint:cyclop // Single-pass token validation and ASCII folding.
+func FoldBareToken(ref string) (string, bool) {
+	if ref == "" {
+		return "", false
+	}
+	needsFold := false
+	for i := 0; i < len(ref); i++ {
+		c := ref[i]
+		if i == 0 {
+			if !isASCIIAlpha(c) {
+				return "", false
+			}
+		} else if !isASCIIAlpha(c) && (c < '0' || c > '9') && c != '.' && c != '-' && c != '_' {
+			return "", false
+		}
+		if c >= 'A' && c <= 'Z' {
+			needsFold = true
+		}
+	}
+	if !needsFold {
+		return ref, true
+	}
+	buf := []byte(ref)
+	for i, c := range buf {
+		if c >= 'A' && c <= 'Z' {
+			buf[i] = c + ('a' - 'A')
+		}
+	}
+	return string(buf), true
+}
+
+func isASCIIAlpha(c byte) bool {
+	return c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z'
 }
 
 // FoldToken returns the ASCII-only case fold used to detect bare-token

@@ -31,12 +31,14 @@ func appendRelationValue(values map[string]any, rel string, val any) {
 }
 
 // validateRelationName enforces the default relation hardening and rejects
-// bare-token case collisions within one relation namespace.
+// bare-token case collisions within one relation namespace. It is used by
+// one-shot validation paths such as RegisterStatic, precomputed input, and the
+// atomic AddCachedLink helper.
 func validateRelationName(rel string, existing map[string]any) error {
-	if err := validateRelationSyntax(rel); err != nil {
+	_, folded, isBare, err := analyzeRelation(rel)
+	if err != nil {
 		return err
 	}
-	folded, isBare := collisionToken(rel)
 	if !isBare {
 		return nil
 	}
@@ -44,11 +46,34 @@ func validateRelationName(rel string, existing map[string]any) error {
 		if name == rel {
 			continue
 		}
-		if other, ok := collisionToken(name); ok && other == folded {
+		if previous, ok := collisionToken(name); ok && previous == folded {
 			return fmt.Errorf("%w: bare token %q collides with %q", ErrInvalidRelation, rel, name)
 		}
 	}
 	return nil
+}
+
+func analyzeRelation(rel string) (relation.Kind, string, bool, error) {
+	kind, err := analyzeRelationKind(rel)
+	if err != nil {
+		return kind, "", false, err
+	}
+	folded, isBare := collisionToken(rel)
+	return kind, folded, isBare, nil
+}
+
+func analyzeRelationKind(rel string) (relation.Kind, error) {
+	if rel == "" {
+		return relation.Invalid, fmt.Errorf("%w: link relation must not be empty", ErrInvalidRelation)
+	}
+	kind := relation.Classify(rel)
+	if kind == relation.Invalid {
+		if strings.TrimSpace(rel) == "" {
+			return kind, fmt.Errorf("%w: link relation must not be empty", ErrInvalidRelation)
+		}
+		return kind, fmt.Errorf("%w: %q is not a valid relation", ErrInvalidRelation, rel)
+	}
+	return kind, nil
 }
 
 // collisionToken returns the folded key only for names with actual bare-token
@@ -56,11 +81,50 @@ func validateRelationName(rel string, existing map[string]any) error {
 // tokens for relation classification but are not registered bare tokens and
 // must not case-fold into collisions.
 func collisionToken(rel string) (string, bool) {
-	folded := relation.FoldToken(rel)
-	if !relation.IsToken(folded) {
-		return "", false
+	return relation.FoldBareToken(rel)
+}
+
+type relationMeta struct {
+	kind   relation.Kind
+	folded string
+	isBare bool
+}
+
+func buildRelationIndex(existing map[string]any) map[string]string {
+	size := len(existing) + 1
+	if size < defaultLinksCapacity {
+		size = defaultLinksCapacity
 	}
-	return folded, true
+	index := make(map[string]string, size)
+	for name := range existing {
+		if folded, ok := collisionToken(name); ok {
+			index[folded] = name
+		}
+	}
+	return index
+}
+
+func checkRelationCollision(rel, folded string, isBare bool, existing map[string]any, index *map[string]string) error {
+	if !isBare {
+		return nil
+	}
+	if *index == nil {
+		*index = buildRelationIndex(existing)
+	}
+	if previous, exists := (*index)[folded]; exists && previous != rel {
+		return fmt.Errorf("%w: bare token %q collides with %q", ErrInvalidRelation, rel, previous)
+	}
+	return nil
+}
+
+func recordRelationToken(index *map[string]string, meta relationMeta, rel string) {
+	if !meta.isBare {
+		return
+	}
+	if *index == nil {
+		*index = make(map[string]string, defaultLinksCapacity)
+	}
+	(*index)[meta.folded] = rel
 }
 
 func validateRelationSyntax(rel string) error {
@@ -73,27 +137,40 @@ func validateRelationSyntax(rel string) error {
 	return nil
 }
 
-func (e *Envelope) validateRelationForAdd(rel string, existing map[string]any) error {
-	if err := validateRelationName(rel, existing); err != nil {
-		return err
+// validateRelationForLinkAdd performs syntax, strict-relation, and indexed
+// collision checks for AddLink/AddEmbedded. The returned metadata lets the
+// caller record the folded token without classifying or folding twice.
+func (e *Envelope) validateRelationForLinkAdd(rel string, existing map[string]any, index *map[string]string) (relationMeta, error) {
+	kind, folded, isBare, err := analyzeRelation(rel)
+	if err != nil {
+		return relationMeta{}, err
+	}
+	if err := checkRelationCollision(rel, folded, isBare, existing, index); err != nil {
+		return relationMeta{}, err
 	}
 	if e.instance != nil && e.instance.strictRelations {
-		return e.instance.validateStrictRelation(rel)
+		if err := e.instance.validateStrictRelationKind(rel, kind); err != nil {
+			return relationMeta{}, err
+		}
 	}
-	return nil
+	return relationMeta{kind: kind, folded: folded, isBare: isBare}, nil
 }
 
 func (i *Instance) validateStrictRelation(rel string) error {
 	if err := validateRelationSyntax(rel); err != nil {
 		return err
 	}
+	return i.validateStrictRelationKind(rel, relation.Classify(rel))
+}
+
+func (i *Instance) validateStrictRelationKind(rel string, kind relation.Kind) error {
 	if prefix, _, ok := relation.SplitCurie(rel); ok && i.hasCuriePrefix(prefix) {
 		return nil // declared CURIEs may use non-scheme prefixes such as "_private"
 	}
 	if relation.HasScheme(rel) {
 		return nil // undeclared scheme-like relations are opaque URIs
 	}
-	if relation.Classify(rel) == relation.Token {
+	if kind == relation.Token {
 		if !relation.IsToken(rel) {
 			return fmt.Errorf("%w: %q is not a lowercase registered token", ErrInvalidRelation, rel)
 		}

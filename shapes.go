@@ -86,6 +86,10 @@ func applyLinkShapes(links map[string]any, shapeFor func(string) LinkShape) (map
 	return links, nil
 }
 
+func (i *Instance) hasShapePolicy() bool {
+	return i != nil && (i.linkShape != ShapeAuto || len(i.relationShapes) > 0)
+}
+
 func (i *Instance) shapeFor(rel string) LinkShape {
 	if i == nil {
 		return ShapeAuto

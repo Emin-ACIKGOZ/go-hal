@@ -42,7 +42,8 @@ func (e *Envelope) AddEmbedded(rel string, value any) {
 	if e.err != nil {
 		return
 	}
-	if err := e.validateRelationForAdd(rel, e.embedded); err != nil {
+	meta, err := e.validateRelationForLinkAdd(rel, e.embedded, &e.embeddedTokens)
+	if err != nil {
 		e.err = err
 		return
 	}
@@ -54,10 +55,7 @@ func (e *Envelope) AddEmbedded(rel string, value any) {
 	if !ok {
 		return
 	}
-	if e.embedded == nil {
-		e.embedded = make(map[string]any, defaultLinksCapacity)
-	}
-	appendEmbeddedValue(e.embedded, rel, normalized)
+	e.addEmbeddedRawMeta(rel, normalized, meta)
 }
 
 // appendEmbeddedValue appends one normalized embedded value. A normalized
@@ -248,11 +246,13 @@ func (e *Envelope) AddCachedLink(link Link, resource any) {
 	if e.err != nil {
 		return
 	}
-	if err := e.validateLinkForAdd(link); err != nil {
+	linkMeta, err := e.validateLinkForAdd(link)
+	if err != nil {
 		e.err = err
 		return
 	}
-	if err := validateRelationName(link.Rel, e.embedded); err != nil {
+	embeddedMeta, err := e.validateRelationForLinkAdd(link.Rel, e.embedded, &e.embeddedTokens)
+	if err != nil {
 		e.err = err
 		return
 	}
@@ -262,12 +262,17 @@ func (e *Envelope) AddCachedLink(link Link, resource any) {
 		return
 	}
 
-	e.addLinkRaw(link.Rel, link)
+	e.addLinkRawMeta(link.Rel, link, linkMeta)
 	if !ok {
 		return
 	}
+	e.addEmbeddedRawMeta(link.Rel, normalized, embeddedMeta)
+}
+
+func (e *Envelope) addEmbeddedRawMeta(rel string, normalized any, meta relationMeta) {
 	if e.embedded == nil {
 		e.embedded = make(map[string]any, defaultLinksCapacity)
 	}
-	appendEmbeddedValue(e.embedded, link.Rel, normalized)
+	appendEmbeddedValue(e.embedded, rel, normalized)
+	recordRelationToken(&e.embeddedTokens, meta, rel)
 }

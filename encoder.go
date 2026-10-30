@@ -473,7 +473,7 @@ func (e Envelope) marshalMeta(depth int, ancestors map[*Envelope]struct{}, scope
 		links[relCuries] = merged
 	}
 
-	if e.instance != nil {
+	if e.instance != nil && e.instance.hasShapePolicy() {
 		shaped, err := applyLinkShapes(links, e.instance.shapeFor)
 		if err != nil {
 			return nil, err
@@ -604,26 +604,31 @@ func (e *Envelope) AddLink(l Link) {
 	if e.err != nil {
 		return
 	}
-	if err := e.validateLinkForAdd(l); err != nil {
+	meta, err := e.validateLinkForAdd(l)
+	if err != nil {
 		e.err = err
 		return
 	}
-	e.addLinkRaw(l.Rel, l)
+	e.addLinkRawMeta(l.Rel, l, meta)
 }
 
-func (e *Envelope) validateLinkForAdd(l Link) error {
-	if err := e.validateRelationForAdd(l.Rel, e.links); err != nil {
-		return err
+func (e *Envelope) validateLinkForAdd(l Link) (relationMeta, error) {
+	meta, err := e.validateRelationForLinkAdd(l.Rel, e.links, &e.linkTokens)
+	if err != nil {
+		return relationMeta{}, err
 	}
 	if e.instance != nil && e.instance.strictLinks {
-		return ValidateLink(l)
+		if err := ValidateLink(l); err != nil {
+			return relationMeta{}, err
+		}
 	}
-	return nil
+	return meta, nil
 }
 
-func (e *Envelope) addLinkRaw(rel string, val any) {
+func (e *Envelope) addLinkRawMeta(rel string, val any, meta relationMeta) {
 	if e.links == nil {
 		e.links = make(map[string]any, defaultLinksCapacity)
 	}
 	appendRelationValue(e.links, rel, val)
+	recordRelationToken(&e.linkTokens, meta, rel)
 }

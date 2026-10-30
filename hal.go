@@ -59,13 +59,15 @@ type Link struct {
 // precomputed envelopes reject AddLink with ErrAddLinkPrecomputed. An Envelope
 // may be marshaled repeatedly or concurrently while it is not being mutated.
 type Envelope struct {
-	Data            any            // The user's struct
-	instance        *Instance      // The registry instance to use
-	links           map[string]any // Computed during marshal
-	embedded        map[string]any // Computed during marshal
-	precomputedJSON []byte         // OPTIMIZATION: pre-serialized links JSON
-	err             error          // Deferred error surfaced during marshaling
-	premanaged      bool           // Links are static/precomputed and must not be added to
+	Data            any               // The user's struct
+	instance        *Instance         // The registry instance to use
+	links           map[string]any    // Computed during marshal
+	embedded        map[string]any    // Computed during marshal
+	precomputedJSON []byte            // OPTIMIZATION: pre-serialized links JSON
+	err             error             // Deferred error surfaced during marshaling
+	premanaged      bool              // Links are static/precomputed and must not be added to
+	linkTokens      map[string]string // folded bare-token index for link collisions
+	embeddedTokens  map[string]string // folded bare-token index for embedded collisions
 }
 
 // InstanceOption configures a new HAL Instance.
