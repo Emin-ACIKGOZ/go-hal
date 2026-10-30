@@ -125,7 +125,7 @@ func Wrap(ctx context.Context, data any) *Envelope {
 //
 // It panics if prefix is empty or contains whitespace, or if href is empty.
 func (i *Instance) RegisterCurie(prefix, href string) {
-	if err := validateCurieDeclarations([]Link{{Name: prefix, Href: href}}, i.strictCuries); err != nil {
+	if err := validateCurieDeclarations([]Link{{Name: prefix, Href: href, Templated: curieHrefTemplated(href)}}, i.strictCuries); err != nil {
 		panic(fmt.Sprintf("hal: RegisterCurie: %v", err))
 	}
 	i.mu.Lock()
@@ -509,6 +509,9 @@ func validatePrecomputedLinkRelations(links map[string]stdjson.RawMessage, stric
 
 	var curies []Link
 	for rel, raw := range links {
+		if rel == relCuries {
+			continue // validated below with CURIE-specific rules
+		}
 		if err := validatePrecomputedRelationValue(rel, raw, strictLinks); err != nil {
 			return nil, err
 		}
@@ -539,15 +542,17 @@ func decodePrecomputedCurieRaw(raw stdjson.RawMessage, strictLinks, strictCuries
 		if err := stdjson.Unmarshal(item, &declaration); err != nil {
 			return nil, nil, fmt.Errorf("element %d: %w", i, err)
 		}
-		if strictLinks {
-			if err := ValidateLink(declaration); err != nil {
-				return nil, nil, fmt.Errorf("element %d: %w", i, err)
-			}
-		}
 		declarations = append(declarations, declaration)
 	}
 	if err := validateCurieDeclarations(declarations, strictCuries); err != nil {
 		return nil, nil, err
+	}
+	if strictLinks {
+		for i, declaration := range declarations {
+			if err := ValidateLink(declaration); err != nil {
+				return nil, nil, fmt.Errorf("element %d: %w", i, err)
+			}
+		}
 	}
 	return rawDeclarations, declarations, nil
 }
@@ -748,7 +753,7 @@ func (i *Instance) curieDeclarations(prefixes []string) []Link {
 			Rel:       relCuries,
 			Name:      name,
 			Href:      href,
-			Templated: true,
+			Templated: curieHrefTemplated(href),
 		})
 	}
 	return declarations

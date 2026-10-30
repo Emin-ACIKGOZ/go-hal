@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Emin-ACIKGOZ/go-hal/internal/relation"
+	"github.com/Emin-ACIKGOZ/go-hal/internal/uritemplate"
 )
 
 // ErrDuplicateCurie is returned when CURIE declarations in one source reuse a
@@ -133,6 +134,11 @@ func validateCurieDeclarations(declarations []Link, strict bool) error {
 		if strings.TrimSpace(declaration.Href) == "" {
 			return fmt.Errorf("%w: %q must have a non-empty href", ErrInvalidCurie, name)
 		}
+		if strict {
+			if err := validateStrictCurieHref(declaration); err != nil {
+				return err
+			}
+		}
 		if _, exists := seen[name]; exists {
 			return fmt.Errorf("%w: %q", ErrDuplicateCurie, name)
 		}
@@ -143,6 +149,25 @@ func validateCurieDeclarations(declarations []Link, strict bool) error {
 
 // curieLinks normalizes the user-supplied curies relation to a slice. A single
 // Link is the shape produced by one AddLink call; repeated calls produce []any.
+func validateStrictCurieHref(declaration Link) error {
+	tmpl, err := uritemplate.Parse(declaration.Href)
+	if err != nil {
+		return fmt.Errorf("%w: %q href: %v", ErrInvalidCurie, declaration.Name, err)
+	}
+	if !tmpl.SingleRelExpression(uritemplate.OpSimple) && !tmpl.SingleRelExpression(uritemplate.OpReserved) {
+		return fmt.Errorf("%w: %q href must be exactly one {rel} or {+rel} expression", ErrInvalidCurie, declaration.Name)
+	}
+	if !declaration.Templated {
+		return fmt.Errorf("%w: %q must set templated true", ErrInvalidCurie, declaration.Name)
+	}
+	return nil
+}
+
+func curieHrefTemplated(href string) bool {
+	tmpl, err := uritemplate.Parse(href)
+	return err == nil && tmpl.HasExpressions()
+}
+
 func curieLinks(value any) ([]Link, error) {
 	switch v := value.(type) {
 	case nil:
