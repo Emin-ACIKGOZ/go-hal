@@ -133,15 +133,11 @@ func (e *Envelope) validateRelationForLinkAdd(rel string, existing map[string]an
 		return relationMeta{}, err
 	}
 	if e.instance != nil && e.instance.strictRelations && !e.instance.deferStrictRelation(rel) {
-		if err := e.instance.validateStrictRelationKind(rel, kind); err != nil {
+		if err := e.instance.validateStrictRelationKindScoped(rel, kind, nil); err != nil {
 			return relationMeta{}, err
 		}
 	}
 	return meta, nil
-}
-
-func (i *Instance) validateStrictRelationKind(rel string, kind relation.Kind) error {
-	return i.validateStrictRelationKindScoped(rel, kind, nil)
 }
 
 // validateStrictRelationKindScoped accepts a relation declared on the instance
