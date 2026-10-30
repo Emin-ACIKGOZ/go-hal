@@ -867,3 +867,30 @@ func (i *Instance) validatePrecomputedStrictRelations(linksJSON []byte) error {
 	}
 	return nil
 }
+
+// precomputedCurieDeclarations reads the declarations already present in a
+// wrapped precomputed link object so embedded children can inherit them
+// without rewriting the cached bytes.
+func precomputedCurieDeclarations(linksJSON []byte) ([]Link, error) {
+	var document map[string]stdjson.RawMessage
+	if err := stdjson.Unmarshal(linksJSON, &document); err != nil {
+		return nil, fmt.Errorf("hal: precomputed links must be a JSON object: %w", err)
+	}
+	rawLinks, ok := document[fieldLinks]
+	if !ok {
+		return nil, nil
+	}
+	var links map[string]stdjson.RawMessage
+	if err := stdjson.Unmarshal(rawLinks, &links); err != nil || links == nil {
+		return nil, errors.New("hal: precomputed _links must be a JSON object")
+	}
+	rawCuries, ok := links[relCuries]
+	if !ok {
+		return nil, nil
+	}
+	var declarations []Link
+	if err := stdjson.Unmarshal(rawCuries, &declarations); err != nil {
+		return nil, fmt.Errorf("hal: precomputed curies: %w", err)
+	}
+	return declarations, nil
+}

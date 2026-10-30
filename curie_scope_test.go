@@ -4,6 +4,7 @@
 package hal
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 )
@@ -196,5 +197,60 @@ func TestCurieScope_SliceChildrenParticipate(t *testing.T) {
 	}
 	if _, exists := childRoot["_links"].(map[string]any)["curies"]; exists {
 		t.Fatalf("slice child redeclared inherited CURIE: %s", b)
+	}
+}
+
+func TestCurieScope_StaticParentParticipates(t *testing.T) {
+	t.Parallel()
+
+	inst := New()
+	inst.RegisterCurie("acme", "https://registered.example/{rel}")
+	RegisterStatic(inst, &embeddedTestUser{}, []Link{
+		{Rel: "curies", Name: "acme", Href: "https://static.example/{rel}", Templated: true},
+		{Rel: "acme:parent", Href: "/parent"},
+	})
+
+	parent := inst.Wrap(context.Background(), &embeddedTestUser{ID: 1})
+	child := inst.WrapRaw(&embeddedTestUser{ID: 2})
+	child.AddLink(Link{Rel: "acme:child", Href: "/child"})
+	parent.AddEmbedded("child", child)
+
+	b, err := json.Marshal(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	childRoot := embeddedObject(t, root, "child")
+	if _, exists := childRoot["_links"].(map[string]any)["curies"]; exists {
+		t.Fatalf("static child redeclared inherited CURIE: %s", b)
+	}
+}
+
+func TestCurieScope_PrecomputedParentParticipates(t *testing.T) {
+	t.Parallel()
+
+	inst := New()
+	inst.RegisterCurie("acme", "https://registered.example/{rel}")
+	handle, err := CompilePrecomputedLinks([]byte(`{
+		"curies":[{"name":"acme","href":"https://precomputed.example/{rel}","templated":true}],
+		"acme:parent":{"href":"/parent"}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parent := inst.WrapPrecomputedLinks(&embeddedTestUser{ID: 1}, handle)
+	child := inst.WrapRaw(&embeddedTestUser{ID: 2})
+	child.AddLink(Link{Rel: "acme:child", Href: "/child"})
+	parent.AddEmbedded("child", child)
+
+	b, err := json.Marshal(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	childRoot := embeddedObject(t, root, "child")
+	if _, exists := childRoot["_links"].(map[string]any)["curies"]; exists {
+		t.Fatalf("precomputed child redeclared inherited CURIE: %s", b)
 	}
 }

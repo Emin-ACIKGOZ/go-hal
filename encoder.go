@@ -56,7 +56,15 @@ func (e Envelope) marshalEnvelope(depth int, ancestors map[*Envelope]struct{}, s
 
 //nolint:cyclop // Linear precomputed splice path with explicit early returns.
 func (e Envelope) marshalPrecomputed(depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
-	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, scope)
+	childScope := scope
+	if len(e.embedded) > 0 && len(e.precomputedJSON) > 0 {
+		declarations, err := precomputedCurieDeclarations(e.precomputedJSON)
+		if err != nil {
+			return nil, err
+		}
+		childScope = extendCurieScope(scope, declarations)
+	}
+	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, childScope)
 	if err != nil {
 		return nil, err
 	}
