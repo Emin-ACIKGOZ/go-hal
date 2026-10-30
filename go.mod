@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/getkin/kin-openapi v0.133.0
-	github.com/goccy/go-json v0.10.6
+	github.com/goccy/go-json v0.12.0
 )
 
 require (
