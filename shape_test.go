@@ -60,6 +60,43 @@ func TestLinkShape_Array(t *testing.T) {
 	}
 }
 
+func TestLinkShape_ArrayIsStableAcrossEnvelopes(t *testing.T) {
+	t.Parallel()
+
+	inst := New(WithLinkShape(ShapeArray))
+	one := marshalShapedLink(t, inst, Link{Rel: "item", Href: "/1"})
+	two := marshalShapedLink(t, inst, Link{Rel: "item", Href: "/1"}, Link{Rel: "item", Href: "/2"})
+
+	for name, root := range map[string]map[string]any{"one": one, "two": two} {
+		items, ok := root["_links"].(map[string]any)["item"].([]any)
+		if !ok {
+			t.Fatalf("%s-link envelope has type %T, want array", name, root["_links"].(map[string]any)["item"])
+		}
+		want := 1
+		if name == "two" {
+			want = 2
+		}
+		if len(items) != want {
+			t.Fatalf("%s-link envelope has %d items, want %d", name, len(items), want)
+		}
+	}
+}
+
+func TestLinkShape_AutoStillFlipsAcrossEnvelopes(t *testing.T) {
+	t.Parallel()
+
+	inst := New()
+	one := marshalShapedLink(t, inst, Link{Rel: "item", Href: "/1"})
+	two := marshalShapedLink(t, inst, Link{Rel: "item", Href: "/1"}, Link{Rel: "item", Href: "/2"})
+
+	if _, ok := one["_links"].(map[string]any)["item"].(map[string]any); !ok {
+		t.Fatalf("one-link ShapeAuto item has type %T, want object", one["_links"].(map[string]any)["item"])
+	}
+	if _, ok := two["_links"].(map[string]any)["item"].([]any); !ok {
+		t.Fatalf("two-link ShapeAuto item has type %T, want array", two["_links"].(map[string]any)["item"])
+	}
+}
+
 func TestLinkShape_Object(t *testing.T) {
 	t.Parallel()
 

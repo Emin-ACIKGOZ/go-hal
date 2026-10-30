@@ -39,7 +39,7 @@ according to draft-11.
 | Resource object `_embedded` | Supported | `AddEmbedded`, `Collection`, and static/precomputed splicing. Arbitrary raw object graphs are caller-owned. |
 | Link Object fields | Supported | `href`, `templated`, `type`, `deprecation`, `name`, `profile`, `title`, `hreflang`; `method` is a non-standard extension. |
 | Relation multiplicity | Supported | One value is an object; repeated values become an array. |
-| Stable link shape | Supported | `ShapeAuto` default, `ShapeArray`, `ShapeObject`; per-relation overrides with `WithRelationShape`. `curies` is always an array. |
+| Stable link shape | Opt-in | `ShapeAuto` remains the default for compatibility; use `ShapeArray` (or per-relation `WithRelationShape`) for the draft §4.1.1 stable-shape profile. `ShapeObject` rejects repeats. `curies` is always an array. |
 | Link relations | Supported | Default hardening rejects blank/control/non-UTF-8 names and bare-token case collisions. `WithStrictRelations` adds grammar checks. |
 | HAL CURIEs | Supported | Declarations merge by name; user declarations win over registered prefixes. Embedded scope uses parent fallback and local override. |
 | Embedded resources | Supported | `*Envelope`, raw structs/maps/objects, one-level slices; depth 32 and cycle detection. |

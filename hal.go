@@ -98,8 +98,9 @@ func WithStrictMode() InstanceOption {
 }
 
 // WithLinkShape sets the default relation shape. ShapeAuto keeps the default
-// object-for-one/array-for-many behavior; ShapeArray always emits arrays;
-// ShapeObject requires at most one link per relation.
+// object-for-one/array-for-many behavior; ShapeArray always emits arrays and is
+// the draft §4.1.1 stable-shape profile; ShapeObject requires at most one link
+// per relation.
 func WithLinkShape(shape LinkShape) InstanceOption {
 	return func(i *Instance) {
 		i.linkShape = shape
