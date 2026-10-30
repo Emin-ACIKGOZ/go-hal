@@ -20,7 +20,7 @@ func TestStrictCurie_RegisterCurieTemplates(t *testing.T) {
 	}
 	for _, href := range valid {
 		if err := validateCurieDeclarations([]Link{{
-			Name: "acme", Href: href, Templated: curieHrefTemplated(href),
+			Name: "acme", Href: href, Templated: deriveTemplated(href),
 		}}, true); err != nil {
 			t.Errorf("strict CURIE href %q rejected: %v", href, err)
 		}
@@ -40,7 +40,7 @@ func TestStrictCurie_RegisterCurieTemplates(t *testing.T) {
 	}
 	for _, href := range invalid {
 		if err := validateCurieDeclarations([]Link{{
-			Name: "acme", Href: href, Templated: curieHrefTemplated(href),
+			Name: "acme", Href: href, Templated: deriveTemplated(href),
 		}}, true); !errors.Is(err, ErrInvalidCurie) {
 			t.Errorf("strict CURIE href %q = %v, want ErrInvalidCurie", href, err)
 		}

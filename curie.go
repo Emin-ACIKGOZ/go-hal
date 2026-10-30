@@ -163,11 +163,6 @@ func validateStrictCurieHref(declaration Link) error {
 	return nil
 }
 
-func curieHrefTemplated(href string) bool {
-	tmpl, err := uritemplate.Parse(href)
-	return err == nil && tmpl.HasExpressions()
-}
-
 // curieLinks normalizes the user-supplied curies relation to a slice. A single
 // Link is the shape produced by one AddLink call; repeated calls produce []any.
 func curieLinks(value any) ([]Link, error) {

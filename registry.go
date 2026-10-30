@@ -131,7 +131,7 @@ func Wrap(ctx context.Context, data any) *Envelope {
 // href, or a strict href/templated violation. Generated declarations derive
 // templated from the href template.
 func (i *Instance) RegisterCurie(prefix, href string) {
-	if err := validateCurieDeclarations([]Link{{Name: prefix, Href: href, Templated: curieHrefTemplated(href)}}, i.strictCuries); err != nil {
+	if err := validateCurieDeclarations([]Link{{Name: prefix, Href: href, Templated: deriveTemplated(href)}}, i.strictCuries); err != nil {
 		panic(fmt.Sprintf("hal: RegisterCurie: %v", err))
 	}
 	i.mu.Lock()
@@ -786,7 +786,7 @@ func (i *Instance) curieDeclarations(prefixes []string) []Link {
 			Rel:       relCuries,
 			Name:      name,
 			Href:      href,
-			Templated: curieHrefTemplated(href),
+			Templated: deriveTemplated(href),
 		})
 	}
 	return declarations
