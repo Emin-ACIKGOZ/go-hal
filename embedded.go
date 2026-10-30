@@ -207,7 +207,9 @@ func marshalEmbeddedArray(values []any, depth int, ancestors map[*Envelope]struc
 func marshalRawEmbeddedValue(value any, strictJSON bool) ([]byte, error) {
 	raw, err := json.Marshal(value)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidEmbedded, err)
+		// Preserve the underlying cause (for example ErrDuplicateJSONKey from a
+		// strict child envelope) while keeping the embedded-resource context.
+		return nil, fmt.Errorf("%w: %w", ErrInvalidEmbedded, err)
 	}
 	trimmed := bytes.TrimSpace(raw)
 	if !hasJSONObjectDelimiters(trimmed) {
