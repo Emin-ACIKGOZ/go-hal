@@ -108,10 +108,11 @@ contexts. `%7B` is data, not an expression.
 
 Optional fields: `type` is checked with `mime.ParseMediaType` and must be a
 concrete media type (wildcards/ranges such as `*/*` and `application/*` are
-rejected); `deprecation` and `profile` are URI-references; `hreflang` uses a
-reduced language-tag syntax. Template literals reject control/space characters
-and the unsafe bytes `"`, `\`, `<`, `>`, `^`, `` ` ``, and `|`.
-`name`, `title`, `method`, and `Rel` are not validated.
+rejected); `deprecation` is a URI-reference (relative values are accepted
+because the base is caller-controlled); `profile` is an absolute URI per draft
+§5.6/RFC 6906; `hreflang` uses a reduced language-tag syntax. Template literals
+reject control/space characters and the unsafe bytes `"`, `\`, `<`, `>`, `^`,
+`` ` ``, and `|`. `name`, `title`, `method`, and `Rel` are not validated.
 
 These link checks run through `ValidateLink` and `WithStrictLinks`; default
 link output remains permissive.

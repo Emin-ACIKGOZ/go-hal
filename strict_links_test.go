@@ -96,10 +96,11 @@ func TestWithStrictLinks_DoesNotChangeDefaults(t *testing.T) {
 
 	env := New().WrapRaw(&embeddedTestUser{ID: 1})
 	env.AddLink(Link{Rel: "self", Href: "", Type: "not a media type"})
+	env.AddLink(Link{Rel: "profile", Href: "/profiles/relative"})
 
 	b, err := json.Marshal(env)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertJSONEqual(t, b, []byte(`{"id":1,"_links":{"self":{"href":"","type":"not a media type"}}}`))
+	assertJSONEqual(t, b, []byte(`{"id":1,"_links":{"self":{"href":"","type":"not a media type"},"profile":{"href":"/profiles/relative"}}}`))
 }

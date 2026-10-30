@@ -97,7 +97,7 @@ func validateLinkOptional(l Link) error {
 		}
 	}
 	if l.Profile != "" {
-		if err := uriref.Validate(l.Profile); err != nil {
+		if err := uriref.ValidateAbsolute(l.Profile); err != nil {
 			return fmt.Errorf("%w: profile: %v", ErrInvalidLink, err)
 		}
 	}
