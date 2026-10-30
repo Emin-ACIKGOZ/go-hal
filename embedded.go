@@ -42,7 +42,7 @@ func (e *Envelope) AddEmbedded(rel string, value any) {
 	if e.err != nil {
 		return
 	}
-	if err := validateRelationName(rel, e.embedded); err != nil {
+	if err := e.validateRelationForAdd(rel, e.embedded); err != nil {
 		e.err = err
 		return
 	}

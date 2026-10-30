@@ -537,7 +537,7 @@ func (e *Envelope) AddLink(l Link) {
 }
 
 func (e *Envelope) validateLinkForAdd(l Link) error {
-	if err := validateRelationName(l.Rel, e.links); err != nil {
+	if err := e.validateRelationForAdd(l.Rel, e.links); err != nil {
 		return err
 	}
 	if e.instance != nil && e.instance.strictLinks {

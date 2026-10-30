@@ -41,13 +41,14 @@ type Generator func(ctx context.Context, v any) []Link
 //	// With strict mode
 //	inst := hal.New(hal.WithStrictMode())
 type Instance struct {
-	mu           sync.RWMutex
-	generators   map[reflect.Type]Generator
-	precomputed  map[reflect.Type]*PrecomputedLinks // OPTIMIZATION: static pre-computed
-	curies       map[string]string
-	strictMode   bool
-	strictLinks  bool
-	strictCuries bool
+	mu              sync.RWMutex
+	generators      map[reflect.Type]Generator
+	precomputed     map[reflect.Type]*PrecomputedLinks // OPTIMIZATION: static pre-computed
+	curies          map[string]string
+	strictMode      bool
+	strictLinks     bool
+	strictRelations bool
+	strictCuries    bool
 }
 
 // New creates a new HAL Instance.
@@ -197,6 +198,11 @@ func compileStaticLinks(links []Link, inst *Instance) *PrecomputedLinks {
 	for _, l := range links {
 		if err := validateRelationName(l.Rel, linksMap); err != nil {
 			panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
+		}
+		if inst != nil && inst.strictRelations {
+			if err := inst.validateStrictRelation(l.Rel); err != nil {
+				panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
+			}
 		}
 		if inst != nil && inst.strictLinks {
 			if err := ValidateLink(l); err != nil {
@@ -369,6 +375,7 @@ func (i *Instance) WrapPrecomputedLinks(data any, links *PrecomputedLinks) *Enve
 
 var errPrecomputedUnvalidated = errors.New("hal: unvalidated precomputed links handle")
 
+//nolint:cyclop // Validation cases are intentionally explicit and ordered.
 func (i *Instance) wrapPrecomputedHandle(data any, links *PrecomputedLinks) *Envelope {
 	if links == nil {
 		return i.WrapRaw(data)
@@ -383,6 +390,12 @@ func (i *Instance) wrapPrecomputedHandle(data any, links *PrecomputedLinks) *Env
 		e.err = fmt.Errorf("%w: precomputed handle was not compiled with strict links", ErrInvalidLink)
 	case i.strictCuries && !links.strictCuries:
 		e.err = fmt.Errorf("%w: precomputed handle was not compiled with strict CURIEs", ErrInvalidCurie)
+	case i.strictRelations && len(links.JSON) > 0:
+		if err := i.validatePrecomputedStrictRelations(links.JSON); err != nil {
+			e.err = err
+			return e
+		}
+		fallthrough
 	default:
 		resolved, err := i.resolvePrecomputedLinks(links)
 		if err != nil {
@@ -805,4 +818,29 @@ func appendMissingCuries(userRaw []stdjson.RawMessage, user, registered []Link) 
 		seen[declaration.Name] = struct{}{}
 	}
 	return merged, nil
+}
+
+// validatePrecomputedStrictRelations re-checks relation keys on a reusable
+// handle when the wrapping instance enables WithStrictRelations. Structural
+// validation already ran at compile time; this opt-in check keeps the
+// PrecomputedLinks fast path free of relation policy otherwise.
+func (i *Instance) validatePrecomputedStrictRelations(linksJSON []byte) error {
+	fields, err := decodePrecomputedObject(linksJSON)
+	if err != nil {
+		return err
+	}
+	links := fields
+	if raw, ok := fields[fieldLinks]; ok {
+		var wrapped map[string]stdjson.RawMessage
+		if err := stdjson.Unmarshal(raw, &wrapped); err != nil || wrapped == nil {
+			return errors.New("hal: precomputed _links must be a JSON object")
+		}
+		links = wrapped
+	}
+	for rel := range links {
+		if err := i.validateStrictRelation(rel); err != nil {
+			return fmt.Errorf("hal: precomputed %w", err)
+		}
+	}
+	return nil
 }

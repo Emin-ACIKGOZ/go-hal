@@ -61,6 +61,44 @@ func validateRelationSyntax(rel string) error {
 	return nil
 }
 
+func (e *Envelope) validateRelationForAdd(rel string, existing map[string]any) error {
+	if err := validateRelationName(rel, existing); err != nil {
+		return err
+	}
+	if e.instance != nil && e.instance.strictRelations {
+		return e.instance.validateStrictRelation(rel)
+	}
+	return nil
+}
+
+func (i *Instance) validateStrictRelation(rel string) error {
+	if err := validateRelationSyntax(rel); err != nil {
+		return err
+	}
+	kind := relation.Classify(rel)
+	if relation.HasScheme(rel) {
+		prefix, _, ok := relation.SplitCurie(rel)
+		if ok && i.hasCuriePrefix(prefix) {
+			return nil
+		}
+		return nil // undeclared scheme-like relations are opaque URIs
+	}
+	if kind == relation.Token {
+		if !relation.IsToken(rel) {
+			return fmt.Errorf("%w: %q is not a lowercase registered token", ErrInvalidRelation, rel)
+		}
+		return nil
+	}
+	return fmt.Errorf("%w: %q is not a token, URI, or declared CURIE", ErrInvalidRelation, rel)
+}
+
+func (i *Instance) hasCuriePrefix(prefix string) bool {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	_, ok := i.curies[prefix]
+	return ok
+}
+
 func validateRelationCollisions(names []string) error {
 	seen := make(map[string]string, len(names))
 	for _, name := range names {
