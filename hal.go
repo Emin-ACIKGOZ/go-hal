@@ -94,3 +94,17 @@ func WithStrictMode() InstanceOption {
 		i.strictMode = true
 	}
 }
+
+// WithStrictLinks enables link validation on AddLink, generated links, static
+// links, Collection self links, and precomputed wrapping. It is independent of
+// WithStrictMode. By default links are permissive; ValidateLink can be called
+// directly for one-off checks.
+//
+// Strict links accept absolute and relative URI references, require
+// templated=true for template hrefs, require templated=false/absent for URI
+// hrefs, and validate type, deprecation, profile, and hreflang syntax.
+func WithStrictLinks() InstanceOption {
+	return func(i *Instance) {
+		i.strictLinks = true
+	}
+}

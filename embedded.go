@@ -235,7 +235,7 @@ func (e *Envelope) AddCachedLink(link Link, resource any) {
 	if e.err != nil {
 		return
 	}
-	if err := validateRelationName(link.Rel, e.links); err != nil {
+	if err := e.validateLinkForAdd(link); err != nil {
 		e.err = err
 		return
 	}

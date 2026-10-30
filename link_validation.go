@@ -18,6 +18,16 @@ import (
 // the full checks.
 var ErrInvalidLink = errors.New("hal: invalid link")
 
+// ValidateLink validates a Link Object without requiring a relation namespace:
+// href URI/template consistency and the optional type, deprecation, profile,
+// and hreflang fields. Rel, name, title, and method are not validated.
+func ValidateLink(l Link) error {
+	if err := validateLinkHref(l); err != nil {
+		return err
+	}
+	return validateLinkOptional(l)
+}
+
 func validateLinkHref(l Link) error {
 	href := l.Href
 	if strings.TrimSpace(href) == "" {

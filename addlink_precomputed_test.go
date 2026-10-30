@@ -92,8 +92,8 @@ func TestAddLink_EmptyRelationIsDeferred(t *testing.T) {
 			env.AddLink(Link{Rel: rel, Href: "/x"})
 
 			b, err := json.Marshal(env)
-			if !errors.Is(err, errEmptyRelation) {
-				t.Fatalf("error = %v (output %s), want empty relation error", err, b)
+			if !errors.Is(err, ErrInvalidRelation) {
+				t.Fatalf("error = %v (output %s), want invalid relation error", err, b)
 			}
 			if len(b) != 0 {
 				t.Fatalf("error returned partial output: %s", b)

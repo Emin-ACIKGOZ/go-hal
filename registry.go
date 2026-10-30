@@ -47,6 +47,7 @@ type Instance struct {
 	precomputed map[reflect.Type]*PrecomputedLinks // OPTIMIZATION: static pre-computed
 	curies      map[string]string
 	strictMode  bool
+	strictLinks bool
 }
 
 // New creates a new HAL Instance.

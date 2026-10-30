@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"reflect"
-	"strings"
 	"unicode/utf8"
 
 	json "github.com/goccy/go-json"
@@ -25,8 +24,6 @@ var ErrHALFieldConflict = errors.New("hal: data already contains reserved HAL fi
 // ErrAddLinkPrecomputed is returned when AddLink is called on an envelope whose
 // links are static or precomputed. Those links are immutable in the envelope.
 var ErrAddLinkPrecomputed = errors.New("hal: cannot add links to a static or precomputed envelope")
-
-var errEmptyRelation = errors.New("hal: link relation must not be empty")
 
 // MarshalJSON implements the json.Marshaler interface.
 // It serializes the wrapped Data and splices in the HAL "_links" and "_embedded"
@@ -529,13 +526,24 @@ func (e *Envelope) AddLink(l Link) {
 		}
 		return
 	}
-	if strings.TrimSpace(l.Rel) == "" {
-		if e.err == nil {
-			e.err = errEmptyRelation
-		}
+	if e.err != nil {
+		return
+	}
+	if err := e.validateLinkForAdd(l); err != nil {
+		e.err = err
 		return
 	}
 	e.addLinkRaw(l.Rel, l)
+}
+
+func (e *Envelope) validateLinkForAdd(l Link) error {
+	if err := validateRelationName(l.Rel, e.links); err != nil {
+		return err
+	}
+	if e.instance != nil && e.instance.strictLinks {
+		return ValidateLink(l)
+	}
+	return nil
 }
 
 func (e *Envelope) addLinkRaw(rel string, val any) {
