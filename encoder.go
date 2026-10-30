@@ -54,6 +54,7 @@ func (e Envelope) marshalEnvelope(depth int, ancestors map[*Envelope]struct{}, s
 	return e.marshalGenerated(depth, ancestors, scope)
 }
 
+//nolint:cyclop // Linear precomputed splice path with explicit early returns.
 func (e Envelope) marshalPrecomputed(depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
 	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, scope)
 	if err != nil {
@@ -78,6 +79,9 @@ func (e Envelope) marshalPrecomputed(depth int, ancestors map[*Envelope]struct{}
 		return bytes.Clone(base), nil
 	}
 	if err := validateDataJSON(dataBytes); err != nil {
+		return nil, err
+	}
+	if err := e.scanStrictData(dataBytes, isDataNull, isDataEmptyObj); err != nil {
 		return nil, err
 	}
 	if err := checkReservedHALFields(dataBytes); err != nil {
@@ -118,6 +122,9 @@ func (e Envelope) marshalGenerated(depth int, ancestors map[*Envelope]struct{}, 
 	if err := validateDataJSON(dataBytes); err != nil {
 		return nil, err
 	}
+	if err := e.scanStrictData(dataBytes, isDataNull, isEmptyObj); err != nil {
+		return nil, err
+	}
 
 	// Reject data that already defines reserved HAL properties; splicing
 	// would emit duplicate JSON keys.
@@ -135,6 +142,16 @@ func (e Envelope) marshalGenerated(depth int, ancestors map[*Envelope]struct{}, 
 
 	// 4. Combine
 	return spliceJSON(dataBytes, metaBytes, isDataNull, isEmptyObj), nil
+}
+
+func (e Envelope) scanStrictData(data []byte, isNull, isEmptyObject bool) error {
+	if e.instance == nil || !e.instance.strictJSON || isNull || isEmptyObject {
+		return nil
+	}
+	if err := findDuplicateJSONKeys(data); err != nil {
+		return fmt.Errorf("hal: data: %w", err)
+	}
+	return nil
 }
 
 func validateDataJSON(data []byte) error {

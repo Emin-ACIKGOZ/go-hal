@@ -49,6 +49,7 @@ type Instance struct {
 	strictLinks     bool
 	strictRelations bool
 	strictCuries    bool
+	strictJSON      bool
 	linkShape       LinkShape
 	relationShapes  map[string]LinkShape
 }

@@ -115,6 +115,16 @@ func WithRelationShape(rel string, shape LinkShape) InstanceOption {
 	}
 }
 
+// WithStrictJSON enables duplicate-key scanning of marshaled Data. It applies
+// to generated, raw, static, precomputed, and compiled envelopes, scans only the
+// non-empty Data object, and does not rescan final output or precomputed links
+// (those are scanned at compile time). Default marshaling stays permissive.
+func WithStrictJSON() InstanceOption {
+	return func(i *Instance) {
+		i.strictJSON = true
+	}
+}
+
 // WithStrictCuries enables strict CURIE declaration validation on AddLink,
 // merge, RegisterCurie, RegisterStatic, and precomputed wrapping. It is
 // independent of WithStrictMode.
