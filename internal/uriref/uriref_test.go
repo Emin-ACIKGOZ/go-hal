@@ -5,6 +5,7 @@ package uriref
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -63,6 +64,61 @@ func TestValidateRejectsUnsafeReferences(t *testing.T) {
 		if err := Validate(ref); !errors.Is(err, ErrInvalidURIReference) {
 			t.Errorf("Validate(%q) = %v, want ErrInvalidURIReference", ref, err)
 		}
+	}
+}
+
+func TestValidateAbsolute(t *testing.T) {
+	t.Parallel()
+
+	valid := []string{
+		"https://example.com/profiles/order",
+		"HTTPS://example.com/profiles/order",
+		"urn:example:profile",
+		"mailto:user@example.com",
+		"tag:example.com,2026:profile",
+		"https://user:pass@example.com:8443/path",
+		"http://[::1]/path",
+		"a:",
+	}
+	for _, ref := range valid {
+		if err := ValidateAbsolute(ref); err != nil {
+			t.Errorf("ValidateAbsolute(%q) = %v, want nil", ref, err)
+		}
+	}
+
+	invalid := []string{
+		"notauri",
+		"relative/path",
+		"/abs/path",
+		"//example.com/path",
+		"?query=only",
+		"#fragment",
+		"",
+		"https://",
+		"http:///x",
+		"1a:b",
+		"https://exa mple.com",
+		"https://example.com/受",
+	}
+	for _, ref := range invalid {
+		if err := ValidateAbsolute(ref); !errors.Is(err, ErrInvalidURIReference) {
+			t.Errorf("ValidateAbsolute(%q) = %v, want ErrInvalidURIReference", ref, err)
+		}
+	}
+}
+
+func TestValidateAbsolutePreservesCause(t *testing.T) {
+	t.Parallel()
+
+	err := ValidateAbsolute("relative/path")
+	if err == nil {
+		t.Fatal("relative reference accepted")
+	}
+	if !strings.Contains(err.Error(), "not an absolute URI") {
+		t.Fatalf("error = %q, want absolute URI diagnostic", err)
+	}
+	if !errors.Is(err, ErrInvalidURIReference) {
+		t.Fatalf("error = %v, want ErrInvalidURIReference", err)
 	}
 }
 

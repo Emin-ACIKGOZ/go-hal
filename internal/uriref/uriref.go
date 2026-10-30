@@ -44,6 +44,20 @@ func Validate(ref string) error {
 	return nil
 }
 
+// ValidateAbsolute reports whether ref is an absolute URI: a valid URI
+// reference with a scheme. urn:, mailto:, tag:, and uppercase schemes are
+// accepted; bare names, relative paths, network-path references, query-only and
+// fragment-only references are rejected.
+func ValidateAbsolute(ref string) error {
+	if err := Validate(ref); err != nil {
+		return err
+	}
+	if _, ok := schemeOf(ref); !ok {
+		return fmt.Errorf("%w: not an absolute URI", ErrInvalidURIReference)
+	}
+	return nil
+}
+
 func validateBytes(ref string) error {
 	for i := 0; i < len(ref); i++ {
 		c := ref[i]
