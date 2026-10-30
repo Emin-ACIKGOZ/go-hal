@@ -168,6 +168,8 @@ These options are independent of `WithStrictMode` and of each other:
   mixed-case bare tokens, and RFC 8288-invalid underscores such as `a_b`. An
   undeclared `acme:widget` remains an opaque URI. Default mode accepts `a_b`
   and does not fold it as a bare-token collision; CURIE prefixes may use `_`.
+  Enforcing the full grammar and case-variant collisions by default is reserved
+  for v2.0.0.
 * `WithStrictCuries()` requires ASCII NCName-subset names and a single
   `{rel}`/`{+rel}` template with `templated: true`.
 * `WithStrictJSON()` scans each non-empty marshaled Data object and raw embedded

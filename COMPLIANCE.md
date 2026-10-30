@@ -143,6 +143,12 @@ link per relation and returns/panics with `ErrLinkShape` for repeats. Static
 links and Collection apply the instance policy; `curies` always stays an array.
 Shape policy never rewrites precomputed JSON.
 
+Default mode remains deliberately lenient for these names because real HAL
+ecosystems use camelCase and underscore relation keys; enforcing the full
+RFC 8288 grammar (and case-variant collision folding for CURIEs/URIs) by default
+is a v2.0.0 compatibility decision. `WithStrictRelations` provides the opt-in
+v1.4.0 profile.
+
 ### CURIE declarations
 
 Default declaration names must be non-empty valid UTF-8 and must not contain a
