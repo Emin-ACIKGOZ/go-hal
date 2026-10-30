@@ -123,6 +123,9 @@ func FuzzLink_AddLink(f *testing.F) {
 		if !utf8.ValidString(rel) || !utf8.ValidString(href) {
 			t.Skip()
 		}
+		if err := validateRelationSyntax(rel); err != nil {
+			t.Skip() // Default hardening rejects blank/control/whitespace relations.
+		}
 
 		e := &Envelope{
 			Data:     nil,
