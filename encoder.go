@@ -215,6 +215,41 @@ func checkJSONStructure(b []byte) (bool, bool, error) {
 	return false, false, nil
 }
 
+// ErrDuplicateJSONKey is returned when JSON contains duplicate object member
+// names. Duplicate names are non-interoperable and cannot be detected after
+// decoding into a map.
+var ErrDuplicateJSONKey = errors.New("hal: duplicate JSON key")
+
+const duplicateKeyDisplayLimit = 128
+
+// DuplicateKeyError reports the first duplicate object key and its byte offset.
+type DuplicateKeyError struct {
+	Key    string
+	Offset int64
+}
+
+func (e *DuplicateKeyError) Error() string {
+	return fmt.Sprintf("hal: duplicate JSON key %q at offset %d", e.Key, e.Offset)
+}
+
+// Unwrap supports errors.Is(err, ErrDuplicateJSONKey).
+func (e *DuplicateKeyError) Unwrap() error { return ErrDuplicateJSONKey }
+
+func newDuplicateKeyError(key string, offset int64) error {
+	return &DuplicateKeyError{Key: capDuplicateKey(key), Offset: offset}
+}
+
+func capDuplicateKey(key string) string {
+	if len(key) <= duplicateKeyDisplayLimit {
+		return key
+	}
+	cut := duplicateKeyDisplayLimit
+	for cut > 0 && !utf8.RuneStart(key[cut]) {
+		cut--
+	}
+	return key[:cut] + "..."
+}
+
 // findDuplicateJSONKeys scans for duplicate object member names at any depth.
 // Duplicate names are non-interoperable and cannot be detected after decoding
 // into a map.
@@ -241,6 +276,7 @@ func findDuplicateJSONKeys(data []byte) error {
 	var scanner jsonDuplicateScanner
 
 	for {
+		offset := dec.InputOffset()
 		tok, err := dec.Token()
 		if errors.Is(err, io.EOF) {
 			return scanner.finish()
@@ -248,7 +284,7 @@ func findDuplicateJSONKeys(data []byte) error {
 		if err != nil {
 			return err
 		}
-		if err := scanner.scan(tok); err != nil {
+		if err := scanner.scan(tok, offset); err != nil {
 			return err
 		}
 	}
@@ -261,7 +297,7 @@ func (s *jsonDuplicateScanner) finish() error {
 	return nil
 }
 
-func (s *jsonDuplicateScanner) scan(tok stdjson.Token) error {
+func (s *jsonDuplicateScanner) scan(tok stdjson.Token, offset int64) error {
 	if s.done {
 		return errors.New("unexpected trailing JSON value")
 	}
@@ -273,7 +309,7 @@ func (s *jsonDuplicateScanner) scan(tok stdjson.Token) error {
 	if delim, ok := tok.(stdjson.Delim); ok {
 		s.stack, err = scanJSONDelimiter(s.stack, delim)
 	} else {
-		err = scanJSONObjectToken(s.stack, tok)
+		err = scanJSONObjectToken(s.stack, tok, offset)
 	}
 	if err != nil {
 		return err
@@ -306,7 +342,7 @@ func scanJSONDelimiter(stack []jsonFrame, delim stdjson.Delim) ([]jsonFrame, err
 	}
 }
 
-func scanJSONObjectToken(stack []jsonFrame, tok stdjson.Token) error {
+func scanJSONObjectToken(stack []jsonFrame, tok stdjson.Token, offset int64) error {
 	n := len(stack)
 	if n == 0 || !stack[n-1].object {
 		return nil
@@ -321,7 +357,7 @@ func scanJSONObjectToken(stack []jsonFrame, tok stdjson.Token) error {
 		return fmt.Errorf("object key has type %T, want string", tok)
 	}
 	if _, exists := top.keys[key]; exists {
-		return fmt.Errorf("duplicate object key %q", key)
+		return newDuplicateKeyError(key, offset)
 	}
 	top.keys[key] = struct{}{}
 	top.wantKey = false
