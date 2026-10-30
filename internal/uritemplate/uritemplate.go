@@ -63,16 +63,15 @@ type Expression struct {
 	Vars     []Var
 }
 
-// Part is either a literal or an expression.
-type Part struct {
+// part is either a literal or an expression.
+type part struct {
 	Literal    string
 	Expression *Expression
 }
 
 // Template is a parsed URI Template.
 type Template struct {
-	raw   string
-	parts []Part
+	parts []part
 }
 
 // Parse parses raw. A string without expressions is a valid literal template.
@@ -82,7 +81,7 @@ func Parse(raw string) (*Template, error) {
 	if !utf8.ValidString(raw) {
 		return nil, fmt.Errorf("%w: invalid UTF-8", ErrInvalidTemplate)
 	}
-	t := &Template{raw: raw}
+	t := &Template{}
 	literalStart := 0
 	for i := 0; i < len(raw); i++ {
 		switch raw[i] {
@@ -91,7 +90,7 @@ func Parse(raw string) (*Template, error) {
 				if err := validateLiteral(raw[literalStart:i]); err != nil {
 					return nil, err
 				}
-				t.parts = append(t.parts, Part{Literal: raw[literalStart:i]})
+				t.parts = append(t.parts, part{Literal: raw[literalStart:i]})
 			}
 			end := strings.IndexByte(raw[i+1:], '}')
 			if end < 0 {
@@ -102,7 +101,7 @@ func Parse(raw string) (*Template, error) {
 			if err != nil {
 				return nil, err
 			}
-			t.parts = append(t.parts, Part{Expression: expr})
+			t.parts = append(t.parts, part{Expression: expr})
 			i = end
 			literalStart = end + 1
 		case '}':
@@ -113,7 +112,7 @@ func Parse(raw string) (*Template, error) {
 		if err := validateLiteral(raw[literalStart:]); err != nil {
 			return nil, err
 		}
-		t.parts = append(t.parts, Part{Literal: raw[literalStart:]})
+		t.parts = append(t.parts, part{Literal: raw[literalStart:]})
 	}
 	return t, nil
 }
@@ -236,12 +235,6 @@ func validateVarName(name string) error {
 	}
 	return nil
 }
-
-// Raw returns the original template text.
-func (t *Template) Raw() string { return t.raw }
-
-// Parts returns the parsed parts.
-func (t *Template) Parts() []Part { return t.parts }
 
 // Expressions returns the expressions in source order.
 func (t *Template) Expressions() []Expression {
