@@ -11,6 +11,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/Emin-ACIKGOZ/go-hal/internal/relation"
 )
 
 // ErrDuplicateCurie is returned when CURIE declarations in one source reuse a
@@ -22,12 +24,14 @@ var ErrDuplicateCurie = errors.New("hal: duplicate CURIE declaration")
 var ErrInvalidCurie = errors.New("hal: invalid CURIE declaration")
 
 // relationPrefix returns the CURIE prefix in a relation such as "acme:widget".
+// Absolute URI forms with an authority ("https://example.com/x") are never
+// treated as CURIEs.
 func relationPrefix(rel string) (string, bool) {
-	idx := strings.IndexByte(rel, ':')
-	if idx <= 0 {
+	prefix, _, ok := relation.SplitCurie(rel)
+	if !ok {
 		return "", false
 	}
-	return rel[:idx], true
+	return prefix, true
 }
 
 func sortedPrefixSet(set map[string]struct{}) []string {
