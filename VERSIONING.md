@@ -1,6 +1,6 @@
 # Versioning & Release Process
 
-go-hal uses **Semantic Versioning** (SemVer) as specified at [semver.org](https://semver.org/). The current version is **v1.1.0**.
+go-hal uses **Semantic Versioning** (SemVer) as specified at [semver.org](https://semver.org/). The current version is **v1.2.0**.
 
 ## Version Format
 
@@ -24,7 +24,7 @@ import (
 )
 
 func main() {
-	fmt.Println(hal.GetVersion())        // "v1.1.0"
+	fmt.Println(hal.GetVersion())        // "v1.2.0"
 	info := hal.GetVersionInfo()
 	fmt.Printf("Major: %d, Minor: %d, Patch: %d\n", 
 		info.Major, info.Minor, info.Patch)
@@ -36,13 +36,13 @@ func main() {
 The `scripts/bump-version.sh` script automates version updates:
 
 ```bash
-# Bump patch version (v1.1.0 → v1.1.1)
+# Bump patch version (v1.2.0 → v1.2.1)
 ./scripts/bump-version.sh patch
 
-# Bump minor version (v1.1.0 → v1.2.0)
+# Bump minor version (v1.2.0 → v1.3.0)
 ./scripts/bump-version.sh minor
 
-# Bump major version (v1.1.0 → v2.0.0)
+# Bump major version (v1.2.0 → v2.0.0)
 ./scripts/bump-version.sh major
 
 # Default is patch
@@ -112,19 +112,18 @@ When preparing a release:
 6. Push: `git push origin main && git push origin v<VERSION>`
 7. Create GitHub Release from the tag (optional but recommended)
 
-## Release v1.1.0
+## Release v1.2.0
 
-The HAL compliance remediation adds backwards-compatible exported API:
-`CompilePrecomputedLinks`, `(*Instance).WrapPrecomputedLinks`,
-`ErrDuplicateCurie`, `ErrInvalidCurie`, and `ErrAddLinkPrecomputed`. It also
-changes several documented behaviors (value-receiver marshaling, static and
-precomputed `AddLink` rejection, and always-emitted collection totals). These
-are compatible additions and behavior corrections, so v1.1.0 is a minor release.
+v1.2.0 raises the minimum Go version to 1.26, drops end-of-life toolchains from
+CI, upgrades `goccy/go-json` to v0.12.0 and `kin-openapi` to v0.152.0, and
+refreshes security-relevant transitive modules. `govulncheck` reports no known
+vulnerabilities in the final module graph. The public Go API is unchanged.
 
 ## Version History
 
 | Version | Date | Notes |
 |---------|------|-------|
+| v1.2.0  | 2026-10-30 | Go 1.26 minimum, dependency and security refresh |
 | v1.1.0  | 2026-10-30 | HAL compliance remediation and validated precomputed links |
 | v1.0.0  | 2026-04-22 | First full release |
 

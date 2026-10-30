@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-30
+
 ### Changed
 
 - Minimum Go version is now **1.26**. Go 1.22, 1.24, and 1.25 are end-of-life
