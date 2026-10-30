@@ -26,17 +26,6 @@ var ErrDuplicateCurie = errors.New("hal: duplicate CURIE declaration")
 // violation.
 var ErrInvalidCurie = errors.New("hal: invalid CURIE declaration")
 
-// relationPrefix returns the CURIE prefix in a relation such as "acme:widget".
-// Absolute URI forms with an authority ("https://example.com/x") are never
-// treated as CURIEs.
-func relationPrefix(rel string) (string, bool) {
-	prefix, _, ok := relation.SplitCurie(rel)
-	if !ok {
-		return "", false
-	}
-	return prefix, true
-}
-
 func sortedPrefixSet(set map[string]struct{}) []string {
 	if len(set) == 0 {
 		return nil
@@ -52,7 +41,7 @@ func sortedPrefixSet(set map[string]struct{}) []string {
 func linkRelationPrefixes(links []Link) []string {
 	set := make(map[string]struct{})
 	for _, link := range links {
-		if prefix, ok := relationPrefix(link.Rel); ok {
+		if prefix, _, ok := relation.SplitCurie(link.Rel); ok {
 			set[prefix] = struct{}{}
 		}
 	}
@@ -62,7 +51,7 @@ func linkRelationPrefixes(links []Link) []string {
 func rawRelationPrefixes(links map[string]stdjson.RawMessage) []string {
 	set := make(map[string]struct{}, len(links))
 	for rel := range links {
-		if prefix, ok := relationPrefix(rel); ok {
+		if prefix, _, ok := relation.SplitCurie(rel); ok {
 			set[prefix] = struct{}{}
 		}
 	}
@@ -72,7 +61,7 @@ func rawRelationPrefixes(links map[string]stdjson.RawMessage) []string {
 func anyRelationPrefixes(links map[string]any) []string {
 	var prefixes []string
 	for rel := range links {
-		if prefix, ok := relationPrefix(rel); ok {
+		if prefix, _, ok := relation.SplitCurie(rel); ok {
 			prefixes = append(prefixes, prefix)
 		}
 	}
