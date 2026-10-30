@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -196,8 +195,8 @@ func compileStaticLinks(links []Link, inst *Instance) *PrecomputedLinks {
 	var curies []Link
 	linksMap := make(map[string]any, len(links))
 	for _, l := range links {
-		if strings.TrimSpace(l.Rel) == "" {
-			panic("hal: RegisterStatic: link relation must not be empty")
+		if err := validateRelationName(l.Rel, linksMap); err != nil {
+			panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
 		}
 		if inst != nil && inst.strictLinks {
 			if err := ValidateLink(l); err != nil {
@@ -475,11 +474,21 @@ func wrapPrecomputedLinks(linksJSON []byte) []byte {
 // validatePrecomputedLinkRelations checks the HAL link relation shape before
 // pre-serialized links are trusted for byte splicing.
 func validatePrecomputedLinkRelations(links map[string]stdjson.RawMessage, strictLinks bool) ([]Link, error) {
+	names := make([]string, 0, len(links))
+	for rel := range links {
+		names = append(names, rel)
+	}
+	for _, rel := range names {
+		if err := validateRelationSyntax(rel); err != nil {
+			return nil, fmt.Errorf("hal: precomputed %w", err)
+		}
+	}
+	if err := validateRelationCollisions(names); err != nil {
+		return nil, fmt.Errorf("hal: precomputed %w", err)
+	}
+
 	var curies []Link
 	for rel, raw := range links {
-		if strings.TrimSpace(rel) == "" {
-			return nil, errors.New("hal: precomputed link relation must not be empty")
-		}
 		if err := validatePrecomputedRelationValue(rel, raw, strictLinks); err != nil {
 			return nil, err
 		}

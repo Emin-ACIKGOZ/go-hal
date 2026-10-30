@@ -6,6 +6,7 @@ package hal
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Emin-ACIKGOZ/go-hal/internal/relation"
 )
@@ -32,8 +33,8 @@ func appendRelationValue(values map[string]any, rel string, val any) {
 // validateRelationName enforces the default relation hardening and rejects
 // bare-token case collisions within one relation namespace.
 func validateRelationName(rel string, existing map[string]any) error {
-	if relation.Classify(rel) == relation.Invalid {
-		return fmt.Errorf("%w: %q", ErrInvalidRelation, rel)
+	if err := validateRelationSyntax(rel); err != nil {
+		return err
 	}
 	if relation.Classify(rel) != relation.Token {
 		return nil
@@ -46,6 +47,31 @@ func validateRelationName(rel string, existing map[string]any) error {
 		if relation.FoldToken(name) == folded {
 			return fmt.Errorf("%w: bare token %q collides with %q", ErrInvalidRelation, rel, name)
 		}
+	}
+	return nil
+}
+
+func validateRelationSyntax(rel string) error {
+	if rel == "" || strings.TrimSpace(rel) == "" {
+		return fmt.Errorf("%w: link relation must not be empty", ErrInvalidRelation)
+	}
+	if relation.Classify(rel) == relation.Invalid {
+		return fmt.Errorf("%w: %q is not a valid relation", ErrInvalidRelation, rel)
+	}
+	return nil
+}
+
+func validateRelationCollisions(names []string) error {
+	seen := make(map[string]string, len(names))
+	for _, name := range names {
+		if relation.Classify(name) != relation.Token {
+			continue
+		}
+		folded := relation.FoldToken(name)
+		if previous, exists := seen[folded]; exists && previous != name {
+			return fmt.Errorf("%w: bare token %q collides with %q", ErrInvalidRelation, name, previous)
+		}
+		seen[folded] = name
 	}
 	return nil
 }
