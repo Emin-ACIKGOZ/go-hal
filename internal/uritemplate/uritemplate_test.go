@@ -128,3 +128,37 @@ func TestSupportedOperator(t *testing.T) {
 		}
 	}
 }
+
+func TestParseRejectsUnsafeLiteralCharacters(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{
+		`/a"b{rel}`,
+		`/a\b{rel}`,
+		`/a<b{rel}`,
+		`/a>b{rel}`,
+		`/a^b{rel}`,
+		"/a`b{rel}",
+		`/a|b{rel}`,
+	} {
+		if _, err := Parse(raw); !errors.Is(err, ErrInvalidTemplate) {
+			t.Errorf("Parse(%q) = %v, want ErrInvalidTemplate", raw, err)
+		}
+	}
+}
+
+func TestParseAllowsNormalLiteralPunctuation(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{
+		`https://example.com/a:b/c?d=e&f=g#h;{rel}`,
+		`/a-b_c.d~e{rel}`,
+		`/a%20b{rel}`,
+		`/café{rel}`,
+		`/a[b]{rel}`,
+	} {
+		if _, err := Parse(raw); err != nil {
+			t.Errorf("Parse(%q) = %v, want nil", raw, err)
+		}
+	}
+}

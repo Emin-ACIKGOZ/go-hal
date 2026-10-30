@@ -64,9 +64,8 @@ func validateTemplatedHref(l Link) error {
 
 func validateLinkOptional(l Link) error {
 	if l.Type != "" {
-		mediaType, _, err := mime.ParseMediaType(l.Type)
-		if err != nil || !strings.Contains(mediaType, "/") {
-			return fmt.Errorf("%w: type %q is not a media type", ErrInvalidLink, l.Type)
+		if err := validateLinkMediaType(l.Type); err != nil {
+			return err
 		}
 	}
 	if l.Deprecation != "" {
@@ -81,6 +80,21 @@ func validateLinkOptional(l Link) error {
 	}
 	if l.HrefLang != "" && !isLanguageTag(l.HrefLang) {
 		return fmt.Errorf("%w: hreflang %q is not a language tag", ErrInvalidLink, l.HrefLang)
+	}
+	return nil
+}
+
+func validateLinkMediaType(value string) error {
+	if strings.ContainsAny(value, "\r\n") {
+		return fmt.Errorf("%w: type %q contains a line break", ErrInvalidLink, value)
+	}
+	mediaType, _, err := mime.ParseMediaType(value)
+	if err != nil {
+		return fmt.Errorf("%w: type %q is not a media type", ErrInvalidLink, value)
+	}
+	slash := strings.IndexByte(mediaType, '/')
+	if slash <= 0 || slash == len(mediaType)-1 || strings.ContainsRune(mediaType, '*') {
+		return fmt.Errorf("%w: type %q is not a concrete media type", ErrInvalidLink, value)
 	}
 	return nil
 }

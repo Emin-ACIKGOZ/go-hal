@@ -124,6 +124,10 @@ func validateLiteral(lit string) error {
 		if c <= 0x20 || c == 0x7f {
 			return fmt.Errorf("%w: literal contains a control or space", ErrInvalidTemplate)
 		}
+		switch c {
+		case '"', '\\', '<', '>', '^', '`', '|':
+			return fmt.Errorf("%w: literal contains unsafe byte %q", ErrInvalidTemplate, c)
+		}
 		if c == '%' {
 			if i+2 >= len(lit) || !isHex(lit[i+1]) || !isHex(lit[i+2]) {
 				return fmt.Errorf("%w: literal has a malformed percent escape", ErrInvalidTemplate)

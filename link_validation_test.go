@@ -118,3 +118,43 @@ func TestValidateLinkOptionalFields(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateLink_RejectsMediaRanges(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"*/*", "application/*", "text/*", "*/json", "application/json\n"} {
+		link := Link{Rel: "self", Href: "/x", Type: value}
+		if err := validateLinkOptional(link); !errors.Is(err, ErrInvalidLink) {
+			t.Errorf("type %q error = %v, want ErrInvalidLink", value, err)
+		}
+	}
+	for _, value := range []string{"application/json", "application/hal+json", "text/plain; charset=utf-8"} {
+		link := Link{Rel: "self", Href: "/x", Type: value}
+		if err := validateLinkOptional(link); err != nil {
+			t.Errorf("valid type %q rejected: %v", value, err)
+		}
+	}
+}
+
+func TestValidateLink_RejectsUnsafeTemplateLiterals(t *testing.T) {
+	t.Parallel()
+
+	for _, href := range []string{
+		`/a"b{rel}`,
+		`/a\b{rel}`,
+		`/a<b{rel}`,
+		`/a>b{rel}`,
+		`/a^b{rel}`,
+		"/a`b{rel}",
+		`/a|b{rel}`,
+	} {
+		if err := ValidateLink(Link{Rel: "self", Href: href, Templated: true}); !errors.Is(err, ErrInvalidLink) {
+			t.Errorf("href %q error = %v, want ErrInvalidLink", href, err)
+		}
+	}
+	for _, href := range []string{"/orders{?id}", "https://docs.example.com/relations/{rel}", "/a[b]{rel}"} {
+		if err := ValidateLink(Link{Rel: "self", Href: href, Templated: true}); err != nil {
+			t.Errorf("valid href %q rejected: %v", href, err)
+		}
+	}
+}
