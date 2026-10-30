@@ -57,18 +57,26 @@ func (e Envelope) marshalEnvelope(depth int, ancestors map[*Envelope]struct{}, s
 //nolint:cyclop // Linear precomputed splice path with explicit early returns.
 func (e Envelope) marshalPrecomputed(depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
 	childScope := scope
-	if len(e.embedded) > 0 && len(e.precomputedJSON) > 0 {
-		declarations, err := precomputedCurieDeclarations(e.precomputedJSON)
+	base := e.precomputedJSON
+	if len(e.embedded) > 0 && len(base) > 0 {
+		declarations, err := precomputedCurieDeclarations(base)
 		if err != nil {
 			return nil, err
 		}
 		childScope = extendCurieScope(scope, declarations)
+		extra := e.instance.curieDeclarationsExcept(anyRelationPrefixes(e.embedded), childScope)
+		if len(extra) > 0 {
+			base, err = mergePrecomputedCuries(base, declarations, extra)
+			if err != nil {
+				return nil, err
+			}
+			childScope = extendCurieScope(childScope, extra)
+		}
 	}
 	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, childScope)
 	if err != nil {
 		return nil, err
 	}
-	base := e.precomputedJSON
 	if len(embeddedJSON) > 0 {
 		base = combinePrecomputedEmbedded(base, embeddedJSON)
 	}
@@ -481,7 +489,7 @@ func (e Envelope) marshalMeta(depth int, ancestors map[*Envelope]struct{}, scope
 	links := e.links
 	var generated []Link
 	if e.instance != nil {
-		generated = e.instance.resolveCuriesExcept(e.links, scope)
+		generated = e.instance.resolveCuriesExcept(e.links, anyRelationPrefixes(e.embedded), scope)
 	}
 	if _, hasUser := e.links[relCuries]; hasUser || len(generated) > 0 {
 		links = make(map[string]any, len(e.links)+1)

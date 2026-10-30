@@ -70,13 +70,54 @@ func rawRelationPrefixes(links map[string]stdjson.RawMessage) []string {
 }
 
 func anyRelationPrefixes(links map[string]any) []string {
-	set := make(map[string]struct{}, len(links))
+	var prefixes []string
 	for rel := range links {
 		if prefix, ok := relationPrefix(rel); ok {
-			set[prefix] = struct{}{}
+			prefixes = append(prefixes, prefix)
 		}
 	}
-	return sortedPrefixSet(set)
+	if len(prefixes) == 0 {
+		return nil
+	}
+	sort.Strings(prefixes)
+	out := prefixes[:1]
+	for _, prefix := range prefixes[1:] {
+		if prefix != out[len(out)-1] {
+			out = append(out, prefix)
+		}
+	}
+	return out
+}
+
+// mergePrefixes merges two sorted, duplicate-free prefix lists. When b is
+// empty it returns a unchanged, so callers with no embedded prefixes keep the
+// existing allocation-free path.
+func mergePrefixes(a, b []string) []string {
+	if len(b) == 0 {
+		return a
+	}
+	if len(a) == 0 {
+		return b
+	}
+	merged := make([]string, 0, len(a)+len(b))
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		switch {
+		case a[i] < b[j]:
+			merged = append(merged, a[i])
+			i++
+		case a[i] > b[j]:
+			merged = append(merged, b[j])
+			j++
+		default:
+			merged = append(merged, a[i])
+			i++
+			j++
+		}
+	}
+	merged = append(merged, a[i:]...)
+	merged = append(merged, b[j:]...)
+	return merged
 }
 
 func validateCurieName(name string, strict bool) error {
