@@ -221,5 +221,29 @@ func mergeCuries(existing any, generated []Link, strict bool) ([]Link, error) {
 // curieScope is the marshal-scoped set of CURIE declarations visible to an
 // embedded resource: parent declarations plus local overrides.
 type curieScope struct {
-	declared map[string]Link //nolint:unused // Populated by embedded CURIE scope handling.
+	declared map[string]Link
+}
+
+func extendCurieScope(parent *curieScope, declarations []Link) *curieScope {
+	if len(declarations) == 0 {
+		return parent
+	}
+	scope := &curieScope{declared: make(map[string]Link, len(declarations))}
+	if parent != nil {
+		for name, declaration := range parent.declared {
+			scope.declared[name] = declaration
+		}
+	}
+	for _, declaration := range declarations {
+		scope.declared[declaration.Name] = declaration
+	}
+	return scope
+}
+
+func (s *curieScope) has(name string) bool {
+	if s == nil {
+		return false
+	}
+	_, ok := s.declared[name]
+	return ok
 }

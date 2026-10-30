@@ -729,8 +729,18 @@ func (i *Instance) RegisteredTypes() []reflect.Type {
 	return types
 }
 
-func (i *Instance) resolveCuries(links map[string]any) []Link {
-	return i.curieDeclarations(anyRelationPrefixes(links))
+func (i *Instance) resolveCuriesExcept(links map[string]any, inherited *curieScope) []Link {
+	prefixes := anyRelationPrefixes(links)
+	if len(prefixes) > 0 && inherited != nil {
+		filtered := prefixes[:0]
+		for _, prefix := range prefixes {
+			if !inherited.has(prefix) {
+				filtered = append(filtered, prefix)
+			}
+		}
+		prefixes = filtered
+	}
+	return i.curieDeclarations(prefixes)
 }
 
 // curieDeclarations returns generated declarations for registered prefixes.

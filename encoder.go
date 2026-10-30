@@ -398,7 +398,7 @@ func (e Envelope) marshalMeta(depth int, ancestors map[*Envelope]struct{}, scope
 	links := e.links
 	var generated []Link
 	if e.instance != nil {
-		generated = e.instance.resolveCuries(e.links)
+		generated = e.instance.resolveCuriesExcept(e.links, scope)
 	}
 	if _, hasUser := e.links[relCuries]; hasUser || len(generated) > 0 {
 		links = make(map[string]any, len(e.links)+1)
@@ -420,7 +420,13 @@ func (e Envelope) marshalMeta(depth int, ancestors map[*Envelope]struct{}, scope
 		links = shaped
 	}
 
-	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, scope)
+	declarations, err := curieLinks(links[relCuries])
+	if err != nil {
+		return nil, err
+	}
+	childScope := extendCurieScope(scope, declarations)
+
+	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, childScope)
 	if err != nil {
 		return nil, err
 	}
