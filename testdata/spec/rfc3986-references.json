@@ -1,0 +1,31 @@
+{
+  "valid": [
+    "http://example.com",
+    "https://example.com/orders/523?page=2#frag",
+    "ftp://ftp.is.co.za/rfc/rfc1808.txt",
+    "ldap://[2001:db8::7]/c=GB?objectClass?one",
+    "mailto:John.Doe@example.com",
+    "news:comp.infosystems.www.servers.unix",
+    "tel:+1-816-555-1212",
+    "urn:oasis:names:specification:docbook:dtd:xml:4.1.2",
+    "/relative/path",
+    "relative/path",
+    "?query=only",
+    "#fragment",
+    "//example.com/path",
+    "http://example.com/a%20b",
+    "http://[::1]/"
+  ],
+  "invalid": [
+    "",
+    "http://exa mple.com",
+    "/foo bar",
+    "/foo\\bar",
+    "http://example.com/%zz",
+    "http://example.com/a{b}",
+    "http://",
+    "http:///path",
+    "//",
+    "http://[::1"
+  ]
+}

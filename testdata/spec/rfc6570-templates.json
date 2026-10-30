@@ -1,0 +1,39 @@
+{
+  "valid": [
+    "/orders{?id}",
+    "https://docs.example.com/relations/{rel}",
+    "https://docs.example.com/relations/{+rel}",
+    "/users/{id}/orders{/orderId}{?fields*}",
+    "{scheme}://{host}/x",
+    "{.format}",
+    "{;x,y}",
+    "{&x,y}",
+    "{#frag}"
+  ],
+  "invalid": [
+    "{",
+    "}",
+    "{}",
+    "{x",
+    "{x,}",
+    "{x:}",
+    "{x:0}",
+    "{x:12345}",
+    "{x**}",
+    "{x:3*}",
+    "{.x.}",
+    "{x..y}",
+    "{ x}",
+    "literal with space",
+    "%zz"
+  ],
+  "reserved_operators": [
+    "{=x}",
+    "{!x}",
+    "{@x}",
+    "{|x}"
+  ],
+  "percent_braces_are_data": [
+    "%7Brel%7D"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "_links": {
+    "self": { "href": "/blog-post" },
+    "author": { "href": "/people/alan-watts" }
+  },
+  "_embedded": {
+    "author": {
+      "_links": { "self": { "href": "/people/alan-watts" } },
+      "name": "Alan Watts",
+      "born": "January 6, 1915",
+      "died": "November 16, 1973"
+    }
+  }
+}

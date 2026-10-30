@@ -1,0 +1,13 @@
+{
+  "_links": {
+    "self": { "href": "/orders" },
+    "curies": [
+      {
+        "name": "acme",
+        "href": "https://docs.acme.com/relations/{rel}",
+        "templated": true
+      }
+    ],
+    "acme:widgets": { "href": "/widgets" }
+  }
+}
