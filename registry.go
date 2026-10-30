@@ -204,6 +204,7 @@ func compileStaticLinks(links []Link, inst *Instance) *PrecomputedLinks {
 	var curies []Link
 	linksMap := make(map[string]any, len(links))
 	for _, l := range links {
+		l = normalizeLink(l)
 		if err := validateRelationName(l.Rel, linksMap); err != nil {
 			panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
 		}

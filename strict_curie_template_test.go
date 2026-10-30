@@ -4,6 +4,7 @@
 package hal
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -138,12 +139,20 @@ func TestStrictCurie_PrecomputedTemplate(t *testing.T) {
 	}
 }
 
-func TestStrictCurie_StaticTemplate(t *testing.T) {
+func TestStrictCurie_StaticTemplateDerivesTemplated(t *testing.T) {
 	t.Parallel()
 
-	assertPanics(t, "hal: RegisterStatic:", func() {
-		RegisterStatic(New(WithStrictCuries()), &embeddedTestUser{}, []Link{
-			{Rel: "curies", Name: "acme", Href: "https://docs.example/{rel}"},
-		})
+	inst := New(WithStrictCuries())
+	RegisterStatic(inst, &embeddedTestUser{}, []Link{
+		{Rel: "curies", Name: "acme", Href: "https://docs.example/{rel}"},
 	})
+	b, err := json.Marshal(inst.Wrap(context.Background(), &embeddedTestUser{ID: 1}))
+	if err != nil {
+		t.Fatalf("static declaration rejected: %v", err)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	curies := relationObjects(t, root, "curies")
+	if len(curies) != 1 || curies[0]["templated"] != true {
+		t.Fatalf("curies = %#v, want derived templated true", curies)
+	}
 }

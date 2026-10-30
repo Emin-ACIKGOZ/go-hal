@@ -168,6 +168,70 @@ func TestStrictPrecomputedTemplateStillRequiresExplicitFlag(t *testing.T) {
 	}
 }
 
+func TestStaticLinksDeriveTemplated(t *testing.T) {
+	t.Parallel()
+
+	inst := New()
+	RegisterStatic(inst, &embeddedTestUser{}, []Link{
+		{Rel: "find", Href: "/orders{?id}"},
+		{Rel: "curies", Name: "acme", Href: "https://docs.example/{rel}"},
+		{Rel: "acme:widget", Href: "/widgets/1"},
+	})
+	b, err := json.Marshal(inst.Wrap(context.Background(), &embeddedTestUser{ID: 1}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	find := relationObjects(t, root, "find")
+	if len(find) != 1 || find[0]["templated"] != true {
+		t.Fatalf("find = %#v, want templated true", find)
+	}
+	curies := relationObjects(t, root, "curies")
+	if len(curies) != 1 || curies[0]["templated"] != true {
+		t.Fatalf("curies = %#v, want templated true", curies)
+	}
+}
+
+func TestStaticLinksStrictAcceptsDerivedTemplates(t *testing.T) {
+	t.Parallel()
+
+	inst := New(WithStrictLinks())
+	RegisterStatic(inst, &embeddedTestUser{}, []Link{
+		{Rel: "find", Href: "/orders{?id}"},
+	})
+	b, err := json.Marshal(inst.Wrap(context.Background(), &embeddedTestUser{ID: 1}))
+	if err != nil {
+		t.Fatalf("strict static template rejected: %v", err)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	find := relationObjects(t, root, "find")
+	if len(find) != 1 || find[0]["templated"] != true {
+		t.Fatalf("find = %#v, want templated true", find)
+	}
+}
+
+func TestCollectionSelfLinkDerivesTemplated(t *testing.T) {
+	t.Parallel()
+
+	for _, inst := range []*Instance{New(), New(WithStrictLinks())} {
+		page := inst.Collection(
+			context.Background(),
+			[]*embeddedTestUser{},
+			0,
+			Link{Rel: "self", Href: "/users{?page}"},
+		)
+		b, err := json.Marshal(page)
+		if err != nil {
+			t.Fatalf("collection self template rejected: %v", err)
+		}
+		root := decodeJSONValue(t, b).(map[string]any)
+		self := relationObjects(t, root, "self")
+		if len(self) != 1 || self[0]["templated"] != true {
+			t.Fatalf("self = %#v, want templated true", self)
+		}
+	}
+}
+
 func BenchmarkAddLink_Plain(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {

@@ -34,6 +34,7 @@ func Collection[T any](ctx context.Context, items []*T, total int, selfLink Link
 //
 // This method panics if items is not a slice.
 func (i *Instance) Collection(ctx context.Context, items any, total int, selfLink Link) *CollectionPage {
+	selfLink = normalizeLink(selfLink)
 	val := reflect.ValueOf(items)
 	if val.Kind() != reflect.Slice {
 		panic("hal: Collection items must be a slice")
