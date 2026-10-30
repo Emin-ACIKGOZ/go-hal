@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-30
+
 ### Added
 
 - `(*Envelope).AddEmbedded` for arbitrary embedded Resource Objects, with
@@ -34,6 +36,19 @@ All notable changes to this project are documented here. The format follows
 - Docs describe the full server-side draft-11 scope and defer client support to
   a planned separate `halclient` package.
 
+### Fixed
+
+- Repeated multi-element embedded slices flatten into one resource array instead
+  of nesting arrays.
+- Strict relations accept declared non-scheme CURIEs and reject RFC 8288 bare
+  tokens containing underscores.
+- Default collision detection folds only actual bare tokens, not relative
+  references.
+- Precomputed CURIE merging byte-splices only the `curies` member, preserving
+  unknown fields and user declarations.
+- Strict link validation rejects media ranges and unsafe template literals;
+  URI-reference validation rejects misplaced brackets and multiple fragment
+  delimiters.
 
 ## [1.2.0] - 2026-10-30
 
