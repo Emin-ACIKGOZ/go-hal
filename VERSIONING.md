@@ -1,6 +1,6 @@
 # Versioning & Release Process
 
-go-hal uses **Semantic Versioning** (SemVer) as specified at [semver.org](https://semver.org/). The current version is **v1.3.0**.
+go-hal uses **Semantic Versioning** (SemVer) as specified at [semver.org](https://semver.org/). The current version is **v1.4.0**.
 
 ## Version Format
 
@@ -24,7 +24,7 @@ import (
 )
 
 func main() {
-	fmt.Println(hal.GetVersion())        // "v1.3.0"
+	fmt.Println(hal.GetVersion())        // "v1.4.0"
 	info := hal.GetVersionInfo()
 	fmt.Printf("Major: %d, Minor: %d, Patch: %d\n", 
 		info.Major, info.Minor, info.Patch)
@@ -36,13 +36,13 @@ func main() {
 The `scripts/bump-version.sh` script automates version updates:
 
 ```bash
-# Bump patch version (v1.3.0 → v1.3.1)
+# Bump patch version (v1.4.0 → v1.4.1)
 ./scripts/bump-version.sh patch
 
-# Bump minor version (v1.3.0 → v1.4.0)
+# Bump minor version (v1.4.0 → v1.5.0)
 ./scripts/bump-version.sh minor
 
-# Bump major version (v1.3.0 → v2.0.0)
+# Bump major version (v1.4.0 → v2.0.0)
 ./scripts/bump-version.sh major
 
 # Default is patch
@@ -112,6 +112,24 @@ When preparing a release:
 6. Push: `git push origin main && git push origin v<VERSION>`
 7. Create GitHub Release from the tag (optional but recommended)
 
+## Release v1.4.0
+
+v1.4.0 closes the remaining draft-11 gap-closure findings as a non-breaking
+minor. Default output now derives `templated: true` for RFC 6570 template links
+(dynamic, static, Collection, and struct-supplied curies) and generates
+`curies` declarations for registered prefixes used only in `_embedded` keys,
+including a byte-splice into precomputed parents. `ContentType` now requires
+absolute profile URIs, and strict `Link.Profile` validation does the same.
+Strict relations honor resource-local and inherited CURIE declarations, and
+strict JSON applies document-wide to embedded child envelopes and raw embedded
+resources. Client-side navigation remains out of scope as optional.
+
+Migration: default output is additive only. `ContentType` rejects non-absolute
+profiles. Strict links accept underived template structs because normalization
+supplies the flag, while precomputed JSON still requires an explicit
+`templated: true`. Default relation grammar and case-collision behavior are
+unchanged.
+
 ## Release v1.3.0
 
 v1.3.0 completes the server-side draft-11 feature set: arbitrary embedded
@@ -125,6 +143,7 @@ behavior change is documented relation/CURIE-name hardening.
 
 | Version | Date | Notes |
 |---------|------|-------|
+| v1.4.0  | 2026-10-30 | Draft-11 gap closure; template derivation, embedded-only curies, scoped strict relations and JSON |
 | v1.3.0  | 2026-10-30 | Full server-side HAL compliance; embedded resources, strict modes, media helpers |
 | v1.2.0  | 2026-10-30 | Go 1.26 minimum, dependency and security refresh |
 | v1.1.0  | 2026-10-30 | HAL compliance remediation and validated precomputed links |
