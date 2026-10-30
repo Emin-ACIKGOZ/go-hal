@@ -90,28 +90,12 @@ func (e Envelope) marshalPrecomputed(depth int, ancestors map[*Envelope]struct{}
 	if len(embeddedJSON) > 0 {
 		base = combinePrecomputedEmbedded(base, embeddedJSON)
 	}
-	if e.Data == nil {
-		return bytes.Clone(base), nil
-	}
-	dataBytes, err := json.Marshal(e.Data)
-	if err != nil {
-		return nil, err
-	}
-	isDataNull, isDataEmptyObj, err := checkJSONStructure(dataBytes)
+	dataBytes, isDataNull, isDataEmptyObj, err := e.prepareData(strictJSON)
 	if err != nil {
 		return nil, err
 	}
 	if isDataNull || isDataEmptyObj {
 		return bytes.Clone(base), nil
-	}
-	if err := validateDataJSON(dataBytes); err != nil {
-		return nil, err
-	}
-	if err := e.scanStrictData(dataBytes, isDataNull, isDataEmptyObj, strictJSON); err != nil {
-		return nil, err
-	}
-	if err := checkReservedHALFields(dataBytes); err != nil {
-		return nil, err
 	}
 	return splicePrecomputed(dataBytes, base), nil
 }
@@ -134,40 +118,50 @@ func combinePrecomputedEmbedded(base, embeddedJSON []byte) []byte {
 }
 
 func (e Envelope) marshalGenerated(depth int, ancestors map[*Envelope]struct{}, scope *curieScope, strictJSON bool) ([]byte, error) {
-	// 1. Marshal the underlying data
-	dataBytes, err := e.marshalData()
+	// 1. Marshal and validate the underlying data.
+	dataBytes, isDataNull, isEmptyObj, err := e.prepareData(strictJSON)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Validate data is an object (so we can inject fields)
-	isDataNull, isEmptyObj, err := checkJSONStructure(dataBytes)
-	if err != nil {
-		return nil, err
-	}
-	if err := validateDataJSON(dataBytes); err != nil {
-		return nil, err
-	}
-	if err := e.scanStrictData(dataBytes, isDataNull, isEmptyObj, strictJSON); err != nil {
-		return nil, err
-	}
-
-	// Reject data that already defines reserved HAL properties; splicing
-	// would emit duplicate JSON keys.
-	if !isDataNull && !isEmptyObj {
-		if err := checkReservedHALFields(dataBytes); err != nil {
-			return nil, err
-		}
-	}
-
-	// 3. Prepare HAL metadata (_links, _embedded)
+	// 2. Prepare HAL metadata (_links, _embedded)
 	metaBytes, err := e.marshalMeta(depth, ancestors, scope, strictJSON)
 	if err != nil {
 		return nil, err
 	}
 
-	// 4. Combine
+	// 3. Combine
 	return spliceJSON(dataBytes, metaBytes, isDataNull, isEmptyObj), nil
+}
+
+// prepareData marshals the envelope data and runs the shared validation
+// pipeline: JSON structure, UTF-8, strict duplicate keys, then reserved HAL
+// fields. Reserved fields are only relevant for non-null, non-empty objects.
+func (e *Envelope) prepareData(strictJSON bool) ([]byte, bool, bool, error) {
+	var dataBytes []byte
+	if e.Data != nil {
+		var err error
+		dataBytes, err = json.Marshal(e.Data)
+		if err != nil {
+			return nil, false, false, err
+		}
+	}
+	isNull, isEmpty, err := checkJSONStructure(dataBytes)
+	if err != nil {
+		return nil, false, false, err
+	}
+	if err := validateDataJSON(dataBytes); err != nil {
+		return nil, false, false, err
+	}
+	if err := e.scanStrictData(dataBytes, isNull, isEmpty, strictJSON); err != nil {
+		return nil, false, false, err
+	}
+	if !isNull && !isEmpty {
+		if err := checkReservedHALFields(dataBytes); err != nil {
+			return nil, false, false, err
+		}
+	}
+	return dataBytes, isNull, isEmpty, nil
 }
 
 func (e Envelope) scanStrictData(data []byte, isNull, isEmptyObject bool, strictJSON bool) error {
@@ -233,13 +227,6 @@ func isEmptyJSONObject(b []byte) bool {
 		return false
 	}
 	return len(bytes.TrimSpace(b[1:len(b)-1])) == 0
-}
-
-func (e Envelope) marshalData() ([]byte, error) {
-	if e.Data == nil {
-		return nil, nil
-	}
-	return json.Marshal(e.Data)
 }
 
 // checkJSONStructure returns (isNull, isEmptyObject, error).
