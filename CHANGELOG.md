@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Document client-side navigation as out of scope for this server-side module
+  instead of promising a future `halclient` package. Draft-11 has no
+  client-side MUST; §8.4 makes cache-pattern support OPTIONAL and §5.4 applies
+  to clients that traverse a deprecated link.
+
 ## [1.3.0] - 2026-10-30
 
 ### Added

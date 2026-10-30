@@ -76,8 +76,11 @@ following `encoding/json` semantics.
 
 `go-hal` does not provide:
 
-* **Client-side Navigation** — deferred to a planned separate `halclient`
-  package; this module is a server-side serializer.
+* **Client-side Navigation** — out of scope for this module, which is a
+  server-side serializer. Draft-11 makes client cache-pattern support OPTIONAL
+  (§8.4) and asks a client to notify only when it traverses a link carrying
+  `deprecation` (§5.4). No `halclient` package is provided; emitted documents
+  are ordinary JSON and can be consumed by any conforming HAL client.
 * **Code Generation** — no OpenAPI-to-Go or Go-to-OpenAPI generation.
 * **Router Integration** — URL construction and HTTP methods remain yours.
 * **Implicit Auto-Discovery** — links are generated only for registered types.

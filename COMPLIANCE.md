@@ -52,7 +52,7 @@ according to draft-11.
 | URI / RFC 6570 template validation | Opt-in | `ValidateLink` and `WithStrictLinks` validate href/templates. Default link output remains permissive. |
 | Hard NCName validation for CURIE names | Opt-in | Default rejects colon/control/whitespace/invalid UTF-8; `WithStrictCuries` applies the ASCII NCName subset. |
 | Automatic self/profile links | Not provided | Add `Link{Rel: "self"}` or `Link{Rel: "profile"}` explicitly. |
-| Client navigation / discovery | Deferred | Optional under draft-11; planned as a separate `halclient` package. Not in this module. |
+| Client-side navigation / discovery | Out of scope | This module is a server-side serializer. Draft-11 has no client-side MUST: §8.4 makes client cache-pattern support OPTIONAL; §5.4's notification SHOULD applies only when a client traverses a link carrying `deprecation`. |
 | OpenAPI generation from Go, runtime response validation | Out of scope | The `openapi` adapter only augments schemas. |
 
 ## Validation boundaries
@@ -339,13 +339,21 @@ instance, applies link/shape policy to the self link, and emits the project
 `CollectionPage.MarshalJSON`; callers that construct a page manually are
 responsible for its contents.
 
-## Client support (deferred)
+## Client-side support (out of scope for this module)
 
-Client-side HAL navigation is **deferred**, not rejected. Draft-11 makes client
-cache support optional (§5.4/§8.4), and bundling it would force premature shared
-internals. A future separate `halclient` package is planned to provide a pure
-`Decode` function, shared RFC 6570/relation/CURIE handling, and no HTTP
-transport. This release deliberately does not include `halclient`.
+This module is a server-side serializer. It does not provide client-side
+decoding, relation navigation, CURIE resolution, or link following. Draft-11
+has no client-side MUST: §8.4 says "client support for this technique is
+OPTIONAL" and only permits clients to prefer embedded resources ("Clients MAY
+be automated"), while §5.4 puts a SHOULD on a client "whenever it traverses
+over a link that has this property" (`deprecation`). A serializer can emit
+`deprecation` and implement the server side of the cache pattern
+(`AddCachedLink`) without traversing a link.
+
+No `halclient` package is provided or planned in this module. The output is
+ordinary HAL JSON that a client implementation can consume;
+`TestSpecFixturesAreValidAndUsable` checks that the published examples are
+valid JSON and decode into generic Go values.
 
 ## Concurrency
 

@@ -14,8 +14,10 @@
 // precomputed links, stable link shapes, media-type helpers, and independent
 // opt-in strict policies for links, relations, CURIEs, and JSON. Template hrefs
 // gain templated=true on emission, and generated documents declare CURIEs for
-// embedded-only relation prefixes. Client-side navigation is deferred to a
-// planned separate halclient package.
+// embedded-only relation prefixes. Client-side decoding and navigation are out
+// of scope for this server-side serializer: draft-11 has no client-side MUST,
+// makes the hypertext cache pattern client-optional (§8.4), and places the
+// deprecation notification SHOULD on clients that traverse a link (§5.4).
 //
 // The target is the supported subset of draft-kelly-json-hal-11, an expired
 // Informational draft rather than an RFC. See COMPLIANCE.md for the support
