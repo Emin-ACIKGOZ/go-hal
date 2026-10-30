@@ -104,6 +104,17 @@ func WithLinkShape(shape LinkShape) InstanceOption {
 	}
 }
 
+// WithRelationShape overrides the default shape for one relation. Later calls
+// for the same relation replace the earlier override.
+func WithRelationShape(rel string, shape LinkShape) InstanceOption {
+	return func(i *Instance) {
+		if i.relationShapes == nil {
+			i.relationShapes = make(map[string]LinkShape)
+		}
+		i.relationShapes[rel] = shape
+	}
+}
+
 // WithStrictRelations enables strict relation grammar on AddLink, AddEmbedded,
 // generated links, static links, and precomputed wrapping. It is independent of
 // WithStrictMode.

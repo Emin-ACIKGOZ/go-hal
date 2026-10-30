@@ -182,3 +182,78 @@ func TestLinkShape_PrecomputedIsNotRewritten(t *testing.T) {
 		t.Fatal("precomputed links were rewritten by shape policy")
 	}
 }
+
+func TestRelationShape_OverridesDefault(t *testing.T) {
+	t.Parallel()
+
+	inst := New(
+		WithLinkShape(ShapeArray),
+		WithRelationShape("self", ShapeObject),
+	)
+	env := inst.WrapRaw(&embeddedTestUser{ID: 1})
+	env.AddLink(Link{Rel: "self", Href: "/a"})
+	env.AddLink(Link{Rel: "item", Href: "/1"})
+
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	links := root["_links"].(map[string]any)
+	if _, ok := links["self"].(map[string]any); !ok {
+		t.Fatalf("self has type %T, want object override", links["self"])
+	}
+	if _, ok := links["item"].([]any); !ok {
+		t.Fatalf("item has type %T, want array default", links["item"])
+	}
+}
+
+func TestRelationShape_CanRelaxGlobalObject(t *testing.T) {
+	t.Parallel()
+
+	inst := New(
+		WithLinkShape(ShapeObject),
+		WithRelationShape("item", ShapeArray),
+	)
+	env := inst.WrapRaw(&embeddedTestUser{ID: 1})
+	env.AddLink(Link{Rel: "self", Href: "/a"})
+	env.AddLink(Link{Rel: "item", Href: "/1"})
+	env.AddLink(Link{Rel: "item", Href: "/2"})
+
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	links := root["_links"].(map[string]any)
+	if _, ok := links["item"].([]any); !ok {
+		t.Fatalf("item has type %T, want array override", links["item"])
+	}
+}
+
+func TestRelationShape_AppliesToStatic(t *testing.T) {
+	t.Parallel()
+
+	inst := New(WithRelationShape("self", ShapeArray))
+	RegisterStatic(inst, &embeddedTestUser{}, []Link{{Rel: "self", Href: "/static"}})
+	b, err := json.Marshal(inst.Wrap(context.Background(), &embeddedTestUser{ID: 1}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	if _, ok := root["_links"].(map[string]any)["self"].([]any); !ok {
+		t.Fatal("per-relation shape was not applied to static links")
+	}
+}
+
+func TestRelationShape_LastOverrideWins(t *testing.T) {
+	t.Parallel()
+
+	root := marshalShapedLink(t, New(
+		WithRelationShape("self", ShapeArray),
+		WithRelationShape("self", ShapeObject),
+	), Link{Rel: "self", Href: "/a"})
+	if _, ok := root["_links"].(map[string]any)["self"].(map[string]any); !ok {
+		t.Fatal("later relation-shape override did not win")
+	}
+}
