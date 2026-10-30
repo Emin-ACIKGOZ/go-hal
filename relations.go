@@ -112,13 +112,8 @@ func (idx *relationIndex) add(rel string, meta relationMeta) {
 }
 
 func validateRelationSyntax(rel string) error {
-	if rel == "" || strings.TrimSpace(rel) == "" {
-		return fmt.Errorf("%w: link relation must not be empty", ErrInvalidRelation)
-	}
-	if relation.Classify(rel) == relation.Invalid {
-		return fmt.Errorf("%w: %q is not a valid relation", ErrInvalidRelation, rel)
-	}
-	return nil
+	_, err := analyzeRelationKind(rel)
+	return err
 }
 
 // validateRelationForLinkAdd performs syntax, strict-relation, and indexed
