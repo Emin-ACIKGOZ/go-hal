@@ -30,24 +30,44 @@ var errEmptyRelation = errors.New("hal: link relation must not be empty")
 
 // MarshalJSON implements the json.Marshaler interface.
 // It serializes the wrapped Data and splices in the HAL "_links" and "_embedded"
-// fields into the resulting JSON object.
+// fields into the resulting JSON object. The value receiver is preserved so
+// Envelope values and *Envelope pointers both marshal; direct *Envelope
+// children are marshaled manually with a shared depth and ancestor scope.
 func (e Envelope) MarshalJSON() ([]byte, error) {
+	return e.marshalEnvelope(0, nil, nil)
+}
+
+func (e Envelope) marshalEnvelope(depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
 	// Caller-supplied precomputed links are validated at construction time;
 	// surface that error rather than emitting corrupted JSON.
 	if e.err != nil {
 		return nil, e.err
 	}
+	if depth > maxEmbeddedDepth {
+		return nil, fmt.Errorf("%w: maximum depth %d", ErrEmbeddedDepthExceeded, maxEmbeddedDepth)
+	}
+	if len(e.embedded) > 0 && ancestors == nil {
+		ancestors = make(map[*Envelope]struct{})
+	}
 
 	// OPTIMIZATION: Fast path for pre-computed JSON
 	if e.precomputedJSON != nil {
-		return e.marshalPrecomputed()
+		return e.marshalPrecomputed(depth, ancestors, scope)
 	}
-	return e.marshalGenerated()
+	return e.marshalGenerated(depth, ancestors, scope)
 }
 
-func (e Envelope) marshalPrecomputed() ([]byte, error) {
+func (e Envelope) marshalPrecomputed(depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
+	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, scope)
+	if err != nil {
+		return nil, err
+	}
+	base := e.precomputedJSON
+	if len(embeddedJSON) > 0 {
+		base = combinePrecomputedEmbedded(base, embeddedJSON)
+	}
 	if e.Data == nil {
-		return bytes.Clone(e.precomputedJSON), nil
+		return bytes.Clone(base), nil
 	}
 	dataBytes, err := json.Marshal(e.Data)
 	if err != nil {
@@ -58,7 +78,7 @@ func (e Envelope) marshalPrecomputed() ([]byte, error) {
 		return nil, err
 	}
 	if isDataNull || isDataEmptyObj {
-		return bytes.Clone(e.precomputedJSON), nil
+		return bytes.Clone(base), nil
 	}
 	if err := validateDataJSON(dataBytes); err != nil {
 		return nil, err
@@ -66,10 +86,27 @@ func (e Envelope) marshalPrecomputed() ([]byte, error) {
 	if err := checkReservedHALFields(dataBytes); err != nil {
 		return nil, err
 	}
-	return splicePrecomputed(dataBytes, e.precomputedJSON), nil
+	return splicePrecomputed(dataBytes, base), nil
 }
 
-func (e Envelope) marshalGenerated() ([]byte, error) {
+func combinePrecomputedEmbedded(base, embeddedJSON []byte) []byte {
+	base = bytes.TrimSpace(base)
+	if len(base) == 0 || bytes.Equal(base, []byte("{}")) {
+		out := make([]byte, 0, len(embeddedJSON)+precomputedLinksPrefixLen)
+		out = append(out, `{"`+fieldEmbedded+`":`...)
+		out = append(out, embeddedJSON...)
+		out = append(out, '}')
+		return out
+	}
+	out := make([]byte, 0, len(base)+len(embeddedJSON)+precomputedLinksPrefixLen)
+	out = append(out, base[:len(base)-1]...)
+	out = append(out, `,"`+fieldEmbedded+`":`...)
+	out = append(out, embeddedJSON...)
+	out = append(out, '}')
+	return out
+}
+
+func (e Envelope) marshalGenerated(depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
 	// 1. Marshal the underlying data
 	dataBytes, err := e.marshalData()
 	if err != nil {
@@ -94,7 +131,7 @@ func (e Envelope) marshalGenerated() ([]byte, error) {
 	}
 
 	// 3. Prepare HAL metadata (_links, _embedded)
-	metaBytes, err := e.marshalMeta()
+	metaBytes, err := e.marshalMeta(depth, ancestors, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +394,8 @@ func checkHALFieldKey(dec *stdjson.Decoder) error {
 	return nil
 }
 
-func (e Envelope) marshalMeta() ([]byte, error) {
+//nolint:cyclop // Metadata assembly is linear; splitting hides the splice rules.
+func (e Envelope) marshalMeta(depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
 	// Build a local view instead of mutating e.links: an Envelope may be
 	// marshaled more than once, including concurrently.
 	links := e.links
@@ -377,23 +415,57 @@ func (e Envelope) marshalMeta() ([]byte, error) {
 		links[relCuries] = merged
 	}
 
-	// Fast path: no links
-	if len(links) == 0 {
-		if len(e.embedded) > 0 {
-			return json.Marshal(map[string]any{fieldEmbedded: e.embedded})
-		}
+	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, scope)
+	if err != nil {
+		return nil, err
+	}
+	if len(links) == 0 && len(embeddedJSON) == 0 {
 		return nil, nil
 	}
-
-	// Only create map if needed
-	if len(e.embedded) > 0 {
-		return json.Marshal(map[string]any{
-			fieldLinks:    links,
-			fieldEmbedded: e.embedded,
-		})
+	if len(links) == 0 {
+		return wrapMetaObject(nil, embeddedJSON), nil
 	}
+	linksJSON, err := json.Marshal(links)
+	if err != nil {
+		return nil, err
+	}
+	return wrapMetaObject(linksJSON, embeddedJSON), nil
+}
 
-	return json.Marshal(map[string]any{fieldLinks: links})
+func wrapMetaObject(linksJSON, embeddedJSON []byte) []byte {
+	out := make([]byte, 0, len(linksJSON)+len(embeddedJSON)+precomputedLinksPrefixLen*2+precomputedLinksWrapperLen)
+	out = append(out, '{')
+	if len(linksJSON) > 0 {
+		out = append(out, `"`+fieldLinks+`":`...)
+		out = append(out, linksJSON...)
+	}
+	if len(embeddedJSON) > 0 {
+		if len(linksJSON) > 0 {
+			out = append(out, ',')
+		}
+		out = append(out, `"`+fieldEmbedded+`":`...)
+		out = append(out, embeddedJSON...)
+	}
+	out = append(out, '}')
+	return out
+}
+
+func (e Envelope) marshalEmbedded(depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
+	if len(e.embedded) == 0 {
+		return nil, nil
+	}
+	if ancestors == nil {
+		ancestors = make(map[*Envelope]struct{})
+	}
+	values := make(map[string]stdjson.RawMessage, len(e.embedded))
+	for rel, value := range e.embedded {
+		raw, err := marshalEmbeddedResource(value, depth+1, ancestors, scope)
+		if err != nil {
+			return nil, fmt.Errorf("hal: embedded relation %q: %w", rel, err)
+		}
+		values[rel] = raw
+	}
+	return stdjson.Marshal(values)
 }
 
 func spliceJSON(data []byte, meta []byte, isDataNull, isDataEmptyObj bool) []byte {

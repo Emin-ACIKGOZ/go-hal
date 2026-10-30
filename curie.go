@@ -140,3 +140,9 @@ func mergeCuries(existing any, generated []Link) ([]Link, error) {
 	}
 	return merged, nil
 }
+
+// curieScope is the marshal-scoped set of CURIE declarations visible to an
+// embedded resource: parent declarations plus local overrides.
+type curieScope struct {
+	declared map[string]Link //nolint:unused // Populated by embedded CURIE scope handling.
+}
