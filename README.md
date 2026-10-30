@@ -240,9 +240,10 @@ When a relation such as `acme:widget` is present, the matching registered prefix
 is emitted in a `curies` array. Unknown prefixes keep the relation but produce
 no declaration. User-supplied `curies` declarations win over registered
 declarations with the same name. Duplicate names within one source return
-`ErrDuplicateCurie`; empty or whitespace-bearing names and empty hrefs return
-`ErrInvalidCurie`. `RegisterCurie` panics immediately for an empty/whitespace
-prefix or an empty href.
+`ErrDuplicateCurie`; names that are empty, whitespace/control-bearing,
+non-UTF-8, or contain a colon and empty hrefs return `ErrInvalidCurie`.
+`WithStrictCuries` additionally requires the ASCII NCName subset.
+`RegisterCurie` panics immediately for invalid names or hrefs.
 
 Generated declarations derive `templated` from the registered href template, so
 a declaration never claims `templated: true` for a non-template. Default mode
