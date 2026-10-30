@@ -292,6 +292,31 @@ _ = ct // serve as the response Content-Type
 `profile` link applies to the document root; embedded resources do not inherit
 it. A manually built `CollectionPage` sets its own root profile in `Links`.
 
+## Links and templates
+
+HAL §5.1 allows an `href` to be a URI or an RFC 6570 URI Template, and §5.2
+recommends `templated: true` for templates. The library derives the flag on
+`AddLink`, `AddCachedLink`, `RegisterStatic`, `Collection` self links, and
+struct-supplied `curies` declarations:
+
+```go
+env.AddLink(hal.Link{Rel: "find", Href: "/orders{?id}"})
+// {"find":{"href":"/orders{?id}","templated":true}}
+```
+
+Derivation requires a literal `{`, a successful template parse, at least one
+expression, and no reserved operator (`=`, `,`, `!`, `@`, `|`). `%7B`/`%7D` are
+data, not expressions. Malformed templates and reserved-operator hrefs are not
+advertised as templates: default mode emits them unchanged, and
+`WithStrictLinks`/`ValidateLink` rejects them. Set `Templated: true` yourself to
+skip the one-time parse; that is the fast path.
+
+`href: ""` is a valid RFC 3986 same-document reference and stays accepted by
+default. Strict link validation rejects empty and whitespace-only hrefs as
+authoring bugs. Precomputed JSON is never rewritten: a template without
+`templated: true` is emitted verbatim by default and rejected by strict link or
+CURIE validation.
+
 ## OpenAPI Adapter (`hal/openapi`)
 
 The optional adapter augments OpenAPI 3.0 schemas using `kin-openapi`.
@@ -445,8 +470,11 @@ publishes an advisory `benchstat` comparison; it does not fail builds.
    state is not re-scanned for duplicate keys after the encoder produces it;
    use a strict encoder if that matters.
 4. `href` is required on Link Objects. By default URI syntax, RFC 6570
-   templates, and relation registries are not validated; enable
-   `WithStrictLinks`/`WithStrictRelations` or call `ValidateLink`.
+   templates, and relation registries are not validated; supported template
+   hrefs derive `templated: true`, while empty hrefs remain accepted as
+   RFC 3986 same-document references. Enable
+   `WithStrictLinks`/`WithStrictRelations` or call `ValidateLink` for strict
+   validation.
 5. Static and precomputed envelopes are immutable for links. `AddLink` and
    `AddCachedLink` record a deferred `ErrAddLinkPrecomputed`; `AddEmbedded` is
    allowed and spliced into the output. Invalid relations are deferred as

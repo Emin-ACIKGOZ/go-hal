@@ -93,8 +93,21 @@ apply this matrix:
 | URI / relative reference | absent or false | valid |
 | URI / relative reference | true | `ErrInvalidLink` |
 | RFC 6570 template | true | valid |
-| RFC 6570 template | absent or false | `ErrInvalidLink` |
+| RFC 6570 template | absent or false | valid; `templated` is derived |
 | empty / whitespace | either | `ErrInvalidLink` |
+
+`ValidateLink` validates the normalized, as-emitted link. A supported template
+href derives `templated: true` before validation, covering `AddLink`,
+`AddCachedLink`, `RegisterStatic`, `Collection` self links, and struct `curies`
+declarations. Detection requires a literal `{`, a successful RFC 6570 parse, at
+least one expression, and no reserved operator (`=`, `,`, `!`, `@`, `|`).
+`%7B`/`%7D` are data; malformed templates and reserved operators are not
+derived. Default mode emits such hrefs unchanged; strict mode rejects them.
+
+The empty href is an RFC 3986 same-document reference. Default mode keeps
+emitting it for compatibility, while `ValidateLink`/`WithStrictLinks` reject
+empty and whitespace-only hrefs as almost-certain authoring bugs. That is the
+one relative-reference exception to the strict link policy.
 
 The URI-reference validator accepts absolute and relative references, including
 the draft §6 examples. It conservatively rejects controls, spaces, non-ASCII
@@ -213,6 +226,14 @@ time, preserving cross-instance reuse. Cached bytes are preserved except for
 deliberate `_embedded` splicing and a byte-splice of only the `curies` member
 when registered declarations are added; all other cached bytes and unknown
 fields remain untouched.
+
+Precomputed links are never rewritten. A template href without
+`templated: true` is emitted verbatim in default mode. Strict link compilation
+and strict instances reject it with `ErrInvalidLink` ("precomputed template href
+requires templated true"), and strict CURIE decoding reports `ErrInvalidCurie`.
+This keeps the byte-preservation contract while failing closed under opt-in
+strictness. Struct-supplied links are normalized at add/registration time, so
+static templates are accepted and emitted with the derived flag.
 
 ### Static links
 

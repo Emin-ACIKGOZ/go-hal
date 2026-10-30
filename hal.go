@@ -164,9 +164,10 @@ func WithStrictRelations() InstanceOption {
 // WithStrictMode. By default links are permissive; ValidateLink can be called
 // directly for one-off checks.
 //
-// Strict links accept absolute and relative URI references, require
-// templated=true for template hrefs, require templated=false/absent for URI
-// hrefs, and validate type, deprecation, profile, and hreflang syntax.
+// Strict links accept absolute and relative URI references, derive
+// templated=true for supported template hrefs, require templated=false/absent
+// for URI hrefs, reject empty/whitespace-only hrefs, and validate type,
+// deprecation, profile, and hreflang syntax.
 func WithStrictLinks() InstanceOption {
 	return func(i *Instance) {
 		i.strictLinks = true

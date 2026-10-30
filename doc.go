@@ -12,8 +12,10 @@
 // The package relies on a central or instance-based registry to map Go types
 // to link generation functions. It supports CURIEs (Compact URIs), reusable
 // precomputed links, stable link shapes, media-type helpers, and independent
-// opt-in strict policies for links, relations, CURIEs, and JSON. Client-side
-// navigation is deferred to a planned separate halclient package.
+// opt-in strict policies for links, relations, CURIEs, and JSON. Template hrefs
+// gain templated=true on emission, and generated documents declare CURIEs for
+// embedded-only relation prefixes. Client-side navigation is deferred to a
+// planned separate halclient package.
 //
 // The target is the supported subset of draft-kelly-json-hal-11, an expired
 // Informational draft rather than an RFC. See COMPLIANCE.md for the support
