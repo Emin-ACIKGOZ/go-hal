@@ -31,6 +31,9 @@ func Validate(ref string) error {
 	if err := validateBytes(ref); err != nil {
 		return err
 	}
+	if err := validateBracketsAndFragment(ref); err != nil {
+		return err
+	}
 	parsed, err := url.Parse(ref)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidURIReference, err)
@@ -58,6 +61,53 @@ func validateBytes(ref string) error {
 		}
 	}
 	return nil
+}
+
+//nolint:cyclop // Explicit bracket/fragment checks keep the policy auditable.
+func validateBracketsAndFragment(ref string) error {
+	if strings.Count(ref, "#") > 1 {
+		return fmt.Errorf("%w: multiple fragment delimiters", ErrInvalidURIReference)
+	}
+	start, end, hasAuthority := authorityBounds(ref)
+	for i := 0; i < len(ref); i++ {
+		if ref[i] != '[' && ref[i] != ']' {
+			continue
+		}
+		if !hasAuthority || i < start || i >= end {
+			return fmt.Errorf("%w: bracket outside authority", ErrInvalidURIReference)
+		}
+	}
+	if hasAuthority {
+		authority := ref[start:end]
+		if strings.Count(authority, "[") > 1 || strings.Count(authority, "]") > 1 {
+			return fmt.Errorf("%w: malformed IPv6 literal", ErrInvalidURIReference)
+		}
+		open := strings.IndexByte(authority, '[')
+		closeIdx := strings.IndexByte(authority, ']')
+		if (open >= 0) != (closeIdx >= 0) || open > closeIdx {
+			return fmt.Errorf("%w: unmatched bracket in authority", ErrInvalidURIReference)
+		}
+	}
+	return nil
+}
+
+func authorityBounds(ref string) (start, end int, ok bool) {
+	if strings.HasPrefix(ref, "//") {
+		start = len("//")
+	} else {
+		scheme, schemeOK := schemeOf(ref)
+		if !schemeOK || !strings.HasPrefix(ref[len(scheme)+1:], "//") {
+			return 0, 0, false
+		}
+		start = len(scheme) + len("://")
+	}
+	for i := start; i < len(ref); i++ {
+		switch ref[i] {
+		case '/', '?', '#':
+			return start, i, true
+		}
+	}
+	return start, len(ref), true
 }
 
 func isHex(c byte) bool {

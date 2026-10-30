@@ -65,3 +65,38 @@ func TestValidateRejectsUnsafeReferences(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateBracketsAndFragments(t *testing.T) {
+	t.Parallel()
+
+	valid := []string{
+		"http://[::1]/",
+		"//[::1]/x",
+		"http://user@[::1]:8080/path",
+		"/a%5Bb",
+		"/a%23b",
+		"/a#b",
+		"https://example.com/a%5Bb?q=%23#frag",
+	}
+	for _, ref := range valid {
+		if err := Validate(ref); err != nil {
+			t.Errorf("Validate(%q) = %v, want nil", ref, err)
+		}
+	}
+
+	invalid := []string{
+		"/a[b",
+		"/a]b",
+		"//host/x[",
+		"http://[::1]/[x]",
+		"/a#b#c",
+		"https://example.com/#a#b",
+		"http://[::1",
+		"http://::1]",
+	}
+	for _, ref := range invalid {
+		if err := Validate(ref); !errors.Is(err, ErrInvalidURIReference) {
+			t.Errorf("Validate(%q) = %v, want ErrInvalidURIReference", ref, err)
+		}
+	}
+}

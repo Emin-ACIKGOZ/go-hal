@@ -158,3 +158,18 @@ func TestValidateLink_RejectsUnsafeTemplateLiterals(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateLink_RejectsMisplacedBracketsAndMultipleFragments(t *testing.T) {
+	t.Parallel()
+
+	for _, href := range []string{"/a[b", "//host/x[", "/a#b#c"} {
+		if err := ValidateLink(Link{Rel: "self", Href: href}); !errors.Is(err, ErrInvalidLink) {
+			t.Errorf("href %q error = %v, want ErrInvalidLink", href, err)
+		}
+	}
+	for _, href := range []string{"http://[::1]/", "//[::1]/x", "/a%5Bb", "/a%23b#c"} {
+		if err := ValidateLink(Link{Rel: "self", Href: href}); err != nil {
+			t.Errorf("valid href %q rejected: %v", href, err)
+		}
+	}
+}
