@@ -184,8 +184,8 @@ func hasControlOrSpace(ref string) bool {
 	return false
 }
 
-// IsToken reports whether ref is a strict, lowercase registered relation token.
-// Extension relation types (URIs and declared CURIEs) are not tokens.
+// IsToken reports whether ref is a strict, lowercase RFC 8288 reg-rel-type
+// token. Extension relation types (URIs and declared CURIEs) are not tokens.
 //
 //nolint:cyclop // Flat byte scanner is easier to audit than a table.
 func IsToken(ref string) bool {

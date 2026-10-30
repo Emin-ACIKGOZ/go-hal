@@ -128,7 +128,7 @@ non-UTF-8 relation names with `ErrInvalidRelation`, and rejects bare tokens that
 collide case-insensitively (`self` vs `Self`). Exact duplicate tokens are normal
 multiplicity. CURIEs and URIs remain case-sensitive.
 
-`WithStrictRelations` additionally accepts lowercase registered tokens, any
+`WithStrictRelations` additionally accepts lowercase RFC 8288 reg-rel-type tokens, any
 absolute URI scheme (`https`, `urn`, `mailto`, `tag`, ...), and declared CURIEs.
 It rejects relative references, `:x`, and mixed-case bare tokens. Because a
 non-authority scheme form is lexically indistinguishable from a CURIE without
@@ -148,6 +148,14 @@ ecosystems use camelCase and underscore relation keys; enforcing the full
 RFC 8288 grammar (and case-variant collision folding for CURIEs/URIs) by default
 is a v2.0.0 compatibility decision. `WithStrictRelations` provides the opt-in
 v1.4.0 profile.
+
+Strict relation validation is lexical. It cannot know whether a lowercase token
+is actually registered in the IANA link-relations registry, so `widgets.v1` is
+accepted even though no such registration is checked. Draft §8.2 recommends that
+custom relation types be absolute URIs or declared CURIEs that dereference to
+documentation; use those when registration or dereferenceability matters. No
+IANA snapshot, network lookup, allowlist, or relation-policy callback is
+provided.
 
 ### CURIE declarations
 

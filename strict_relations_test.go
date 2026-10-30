@@ -152,3 +152,28 @@ func TestWithStrictRelations_UndeclaredNonAuthorityFormIsOpaqueURI(t *testing.T)
 		t.Fatalf("undeclared prefix produced a declaration: %s", b)
 	}
 }
+
+func TestWithStrictRelations_AcceptsUnregisteredGrammarToken(t *testing.T) {
+	t.Parallel()
+
+	// RFC 8288 grammar is checked; IANA registration status is not knowable
+	// lexically and is deliberately out of scope.
+	for _, rel := range []string{"widgets.v1", "self", "next"} {
+		env := New(WithStrictRelations()).WrapRaw(&embeddedTestUser{ID: 1})
+		env.AddLink(Link{Rel: rel, Href: "/x"})
+		b, err := json.Marshal(env)
+		if err != nil {
+			t.Fatalf("strict relation %q rejected: %v", rel, err)
+		}
+		root := decodeJSONValue(t, b).(map[string]any)
+		if len(relationObjects(t, root, rel)) != 1 {
+			t.Fatalf("relation %q lost: %s", rel, b)
+		}
+	}
+
+	inst := New(WithStrictRelations())
+	RegisterStatic(inst, &embeddedTestUser{}, []Link{{Rel: "widgets.v1", Href: "/x"}})
+	if _, err := json.Marshal(inst.Wrap(context.Background(), &embeddedTestUser{ID: 1})); err != nil {
+		t.Fatalf("strict static widgets.v1 rejected: %v", err)
+	}
+}

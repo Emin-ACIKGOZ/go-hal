@@ -146,11 +146,13 @@ func WithStrictCuries() InstanceOption {
 // generated links, static links, and precomputed wrapping. It is independent of
 // WithStrictMode.
 //
-// Strict relations accept lowercase registered tokens, any absolute URI scheme
-// (including urn:, mailto:, and tag:), and declared CURIEs. Relative references,
-// ":x", and mixed-case bare tokens are rejected. An undeclared "acme:widget" is
-// accepted as an opaque URI because a non-authority scheme form is
-// indistinguishable from an absolute URI without declaration context.
+// Strict relations accept lowercase RFC 8288 reg-rel-type tokens, any absolute
+// URI scheme (including urn:, mailto:, and tag:), and declared CURIEs. Relation
+// grammar is checked lexically; IANA registration status is not consulted.
+// Relative references, ":x", and mixed-case bare tokens are rejected. An
+// undeclared "acme:widget" is accepted as an opaque URI because a non-authority
+// scheme form is indistinguishable from an absolute URI without declaration
+// context.
 func WithStrictRelations() InstanceOption {
 	return func(i *Instance) {
 		i.strictRelations = true
