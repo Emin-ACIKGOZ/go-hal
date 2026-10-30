@@ -1,22 +1,24 @@
 # go-hal
 
-A HAL (Hypertext Application Language) serializer for Go. It wraps Go values in
-an envelope and injects `_links` during JSON marshaling, with typed link
-generators, reusable precomputed links, CURIEs, and an optional OpenAPI
-adapter. `AddEmbedded` emits arbitrary embedded resources, and `CollectionPage`
-also emits a project-specific `_embedded.items` convention.
+A server-side HAL (Hypertext Application Language) implementation for Go. It
+wraps Go values in an envelope and injects `_links` during JSON marshaling, with
+typed link generators, reusable precomputed links, CURIEs, and an optional
+OpenAPI adapter. `AddEmbedded` emits arbitrary embedded resources, and
+`CollectionPage` also emits a project-specific `_embedded.items` convention.
 
-The implementation targets the supported subset of
-`draft-kelly-json-hal-11` (an expired IETF Informational draft, not an RFC).
-Compliance is deliberately scoped: see [COMPLIANCE.md](COMPLIANCE.md) for the
-support matrix, validation boundaries, and the list of features that are out of
-scope. In particular, `application/hal+json` is not an IANA-registered media
-type; the registered vendor type is `application/vnd.hal+json`.
+The implementation covers the server-side document model of
+`draft-kelly-json-hal-11` (an expired IETF Informational draft, not an RFC),
+with strict validation available through independent opt-in modes. See
+[COMPLIANCE.md](COMPLIANCE.md) for the support matrix, validation boundaries,
+and out-of-scope features. In particular, `application/hal+json` is not an
+IANA-registered media type; the registered vendor type is
+`application/vnd.hal+json`.
 
 ## Requirements
 
-Go **1.26** or newer. Go 1.22, 1.24, and 1.25 are end-of-life and are no longer
-tested. The previous v1.1.0 release remains available for older toolchains.
+Go **1.26** or newer. Go 1.25 and older are end-of-life and are no longer
+tested. The previous v1.1.0 release (Go 1.22.5) remains available for older
+toolchains.
 
 ## Minimal Example
 
@@ -100,7 +102,8 @@ following `encoding/json` semantics.
 * **Validated Precomputed Links** — compile once, reuse across envelopes and
   instances.
 * **CURIE Support** — registered prefixes and user declarations are merged with
-  user-wins precedence; invalid or duplicate declarations are rejected.
+  user-wins precedence; invalid names, empty hrefs, and duplicate declarations
+  are rejected.
 * **Embedded Resources** — `AddEmbedded` for raw objects, maps, slices, and
   nested `*Envelope` values, with depth/cycle protection and the §8.4 cache
   pattern via `AddCachedLink`.
@@ -436,7 +439,7 @@ json.Marshal(env)
 |---------|----------------|--------|
 | Reflection | Often required | Typed generators avoid `reflect.Call`; reflection is used for registration and the deprecated API |
 | Link injection | At creation | At JSON marshal |
-| Dependencies | Varies | `goccy/go-json` for encoding; optional `kin-openapi` adapter |
+| Dependencies | Varies | `goccy/go-json` for encoding; `kin-openapi` only for the optional `openapi` package (still a module requirement) |
 | Type Safety | Dynamic | Compile-time checked typed generators |
 
 ## Performance
@@ -453,8 +456,8 @@ go test -run='^$' -bench=. -benchmem -count=10 ./...
 The three approaches are:
 
 1. **Generated links** (`Register` / `Wrap`): flexible, per-request links.
-2. **Static links** (`RegisterStatic`): serialized once per type; best for links
-   that do not vary per instance.
+2. **Static links** (`RegisterStatic`): serialized once per instance and type;
+   best for links that do not vary per instance.
 3. **Compiled precomputed links** (`CompilePrecomputedLinks` +
    `WrapPrecomputedLinks`): validate once and reuse; best when links are produced
    in a separate pass or cache. `WrapPrecomputed` is the safe one-shot form and

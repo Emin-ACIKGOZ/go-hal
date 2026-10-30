@@ -106,8 +106,8 @@ default case-variant collision behavior, and link-shape defaults are unchanged.
 
 ### Changed
 
-- Minimum Go version is now **1.26**. Go 1.22, 1.24, and 1.25 are end-of-life
-  and are no longer tested.
+- Minimum Go version is now **1.26**. Go 1.22–1.25 are end-of-life and are no
+  longer tested.
 - Upgraded `github.com/goccy/go-json` to v0.12.0.
 - Upgraded `github.com/getkin/kin-openapi` to v0.152.0 and refreshed the
   security-relevant transitive modules, including `golang.org/x/text` to

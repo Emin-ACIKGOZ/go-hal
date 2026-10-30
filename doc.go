@@ -12,15 +12,17 @@
 // The package relies on a central or instance-based registry to map Go types
 // to link generation functions. It supports CURIEs (Compact URIs), reusable
 // precomputed links, stable link shapes, media-type helpers, and independent
-// opt-in strict policies for links, relations, CURIEs, and JSON. Template hrefs
-// gain templated=true on emission, and generated documents declare CURIEs for
-// embedded-only relation prefixes. Client-side decoding and navigation are out
-// of scope for this server-side serializer: draft-11 has no client-side MUST,
-// makes the hypertext cache pattern client-optional (§8.4), and places the
-// deprecation notification SHOULD on clients that traverse a link (§5.4).
+// opt-in strict policies for links, relations, CURIEs, and JSON. Supported
+// template hrefs gain templated=true on emission, and generated documents
+// declare CURIEs for embedded-only relation prefixes. Client-side decoding and
+// navigation are out of scope for this server-side serializer: draft-11 has no
+// client-side MUST, makes the hypertext cache pattern client-optional (§8.4),
+// and places the deprecation notification SHOULD on clients that traverse a
+// link (§5.4).
 //
-// The target is the supported subset of draft-kelly-json-hal-11, an expired
-// Informational draft rather than an RFC. See COMPLIANCE.md for the support
+// The package covers the server-side document model of draft-kelly-json-hal-11,
+// an expired Informational draft rather than an RFC. Strict validation is
+// available through independent opt-in modes; see COMPLIANCE.md for the support
 // matrix, validation boundaries, and out-of-scope features.
 //
 // All methods on Instance are safe for concurrent use. Envelopes may be
