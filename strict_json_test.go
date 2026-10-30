@@ -7,9 +7,22 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 )
+
+type duplicateMarshaler struct{}
+
+func (duplicateMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(`{"a":1,"a":2}`), nil
+}
+
+type scalarMarshaler struct{}
+
+func (scalarMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(`"scalar"`), nil
+}
 
 func TestWithStrictJSON_RejectsDuplicateDataKeys(t *testing.T) {
 	t.Parallel()
@@ -217,6 +230,128 @@ func TestWithStrictJSON_InheritsIntoPrecomputedChildren(t *testing.T) {
 
 	if _, err := json.Marshal(parent); !errors.Is(err, ErrDuplicateJSONKey) {
 		t.Fatalf("error = %v, want ErrDuplicateJSONKey", err)
+	}
+}
+
+func TestWithStrictJSON_ScansRawEmbeddedValues(t *testing.T) {
+	t.Parallel()
+
+	values := map[string]any{
+		"raw":       json.RawMessage(`{"a":1,"a":2}`),
+		"marshaler": duplicateMarshaler{},
+		"nested":    json.RawMessage(`{"outer":{"a":1,"a":2}}`),
+		"raw-map":   map[string]json.RawMessage{"nested": json.RawMessage(`{"a":1,"a":2}`)},
+		"escaped":   json.RawMessage(`{"a":1,"\u0061":2}`),
+	}
+	for name, value := range values {
+		t.Run(name, func(t *testing.T) {
+			parent := New(WithStrictJSON()).WrapRaw(&embeddedTestUser{ID: 1})
+			parent.AddEmbedded("child", value)
+
+			out, err := json.Marshal(parent)
+			if !errors.Is(err, ErrDuplicateJSONKey) {
+				t.Fatalf("error = %v (output %s), want ErrDuplicateJSONKey", err, out)
+			}
+			if len(out) != 0 {
+				t.Fatalf("error returned partial output: %s", out)
+			}
+		})
+	}
+}
+
+func TestWithStrictJSON_RawEmbeddedErrorContext(t *testing.T) {
+	t.Parallel()
+
+	parent := New(WithStrictJSON()).WrapRaw(&embeddedTestUser{ID: 1})
+	parent.AddEmbedded("child", json.RawMessage(`{"a":1,"a":2}`))
+
+	_, err := json.Marshal(parent)
+	if !errors.Is(err, ErrDuplicateJSONKey) {
+		t.Fatalf("error = %v, want ErrDuplicateJSONKey", err)
+	}
+	if !strings.Contains(err.Error(), `hal: embedded relation "child": hal: embedded resource:`) {
+		t.Fatalf("error = %q, want relation and resource context", err)
+	}
+	var dup *DuplicateKeyError
+	if !errors.As(err, &dup) || dup.Key != "a" {
+		t.Fatalf("error does not expose DuplicateKeyError: %v", err)
+	}
+	if dup.Offset != 7 {
+		t.Fatalf("Offset = %d, want 7 (relative to the embedded value)", dup.Offset)
+	}
+}
+
+func TestWithStrictJSON_RawEmbeddedArrayIndexContext(t *testing.T) {
+	t.Parallel()
+
+	parent := New(WithStrictJSON()).WrapRaw(&embeddedTestUser{ID: 1})
+	parent.AddEmbedded("children", []json.RawMessage{
+		json.RawMessage(`{"ok":1}`),
+		json.RawMessage(`{"a":1,"a":2}`),
+	})
+
+	_, err := json.Marshal(parent)
+	if !errors.Is(err, ErrDuplicateJSONKey) {
+		t.Fatalf("error = %v, want ErrDuplicateJSONKey", err)
+	}
+	if !strings.Contains(err.Error(), "embedded element 1") {
+		t.Fatalf("error = %q, want array element index", err)
+	}
+}
+
+func TestWithStrictJSON_RawScanRunsAfterObjectCheck(t *testing.T) {
+	t.Parallel()
+
+	parent := New(WithStrictJSON()).WrapRaw(&embeddedTestUser{ID: 1})
+	parent.AddEmbedded("scalar", scalarMarshaler{})
+
+	_, err := json.Marshal(parent)
+	if !errors.Is(err, ErrInvalidEmbedded) {
+		t.Fatalf("error = %v, want ErrInvalidEmbedded", err)
+	}
+	if errors.Is(err, ErrDuplicateJSONKey) {
+		t.Fatalf("non-object value was scanned as an object: %v", err)
+	}
+}
+
+func TestWithStrictJSON_DefaultRawEmbeddedRemainsPermissive(t *testing.T) {
+	t.Parallel()
+
+	parent := New().WrapRaw(&embeddedTestUser{ID: 1})
+	parent.AddEmbedded("child", json.RawMessage(`{"a":1,"a":2}`))
+
+	b, err := json.Marshal(parent)
+	if err != nil {
+		t.Fatalf("default marshal rejected raw embedded duplicate: %v", err)
+	}
+	if !strings.Contains(string(b), `{"a":1,"a":2}`) {
+		t.Fatalf("default output changed raw embedded bytes: %s", b)
+	}
+}
+
+func TestWithStrictJSON_RawScanIsTransitive(t *testing.T) {
+	t.Parallel()
+
+	root := New(WithStrictJSON()).WrapRaw(&embeddedTestUser{ID: 1})
+	middle := New().WrapRaw(&embeddedTestUser{ID: 2})
+	middle.AddEmbedded("leaf", json.RawMessage(`{"a":1,"a":2}`))
+	root.AddEmbedded("middle", middle)
+
+	if _, err := json.Marshal(root); !errors.Is(err, ErrDuplicateJSONKey) {
+		t.Fatalf("error = %v, want ErrDuplicateJSONKey", err)
+	}
+}
+
+func BenchmarkMarshal_StrictEmbedded(b *testing.B) {
+	parent := New(WithStrictJSON()).WrapRaw(&embeddedTestUser{ID: 1})
+	parent.AddEmbedded("child", json.RawMessage(`{"id":2,"name":"clean"}`))
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := json.Marshal(parent); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

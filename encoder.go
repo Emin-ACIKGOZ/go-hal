@@ -171,13 +171,22 @@ func (e Envelope) marshalGenerated(depth int, ancestors map[*Envelope]struct{}, 
 }
 
 func (e Envelope) scanStrictData(data []byte, isNull, isEmptyObject bool, strictJSON bool) error {
-	if isNull || isEmptyObject || !strictJSON {
+	if isNull || isEmptyObject {
 		return nil
 	}
-	if err := findDuplicateJSONKeys(data); err != nil {
+	if err := scanDuplicateJSONKeys(data, strictJSON); err != nil {
 		return fmt.Errorf("hal: data: %w", err)
 	}
 	return nil
+}
+
+// scanDuplicateJSONKeys is the single strict gate around the duplicate-key
+// scanner. Disabled strict mode adds one branch and no allocation.
+func scanDuplicateJSONKeys(data []byte, strict bool) error {
+	if !strict {
+		return nil
+	}
+	return findDuplicateJSONKeys(data)
 }
 
 func (i *Instance) strictJSONEnabled() bool { return i != nil && i.strictJSON }

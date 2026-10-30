@@ -117,10 +117,13 @@ func WithRelationShape(rel string, shape LinkShape) InstanceOption {
 	}
 }
 
-// WithStrictJSON enables duplicate-key scanning of marshaled Data. It applies
-// to generated, raw, static, precomputed, and compiled envelopes, scans only the
-// non-empty Data object, and does not rescan final output or precomputed links
-// (those are scanned at compile time). Default marshaling stays permissive.
+// WithStrictJSON enables duplicate-key scanning of marshaled Resource Objects.
+// It scans each envelope's non-empty Data object and raw embedded values, and
+// the policy is inherited by embedded child envelopes (the effective policy is
+// parent OR child). It does not rescan final output or precomputed/static link
+// JSON (those are scanned at compile time). DuplicateKeyError.Offset is relative
+// to the scanned value, not the final document. Default marshaling stays
+// permissive.
 func WithStrictJSON() InstanceOption {
 	return func(i *Instance) {
 		i.strictJSON = true

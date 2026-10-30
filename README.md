@@ -104,7 +104,8 @@ following `encoding/json` semantics.
 * **Defensive JSON Handling** — reserved HAL keys, escaped reserved keys,
   duplicate keys in precomputed input, invalid UTF-8, and non-object roots are
   rejected before output is produced. `WithStrictJSON` extends duplicate-key
-  checks to marshaled state.
+  checks to each marshaled Data object and raw embedded resource, inherited
+  transitively by embedded child envelopes.
 * **Opt-in Strict Modes** — `WithStrictLinks`, `WithStrictRelations`,
   `WithStrictCuries`, and `WithStrictJSON` are independent; defaults stay
   permissive apart from the documented invalid-name/collision hardening.
@@ -169,8 +170,9 @@ These options are independent of `WithStrictMode` and of each other:
   and does not fold it as a bare-token collision; CURIE prefixes may use `_`.
 * `WithStrictCuries()` requires ASCII NCName-subset names and a single
   `{rel}`/`{+rel}` template with `templated: true`.
-* `WithStrictJSON()` scans the non-empty marshaled Data object for duplicate
-  keys and returns `ErrDuplicateJSONKey` / `*DuplicateKeyError`.
+* `WithStrictJSON()` scans each non-empty marshaled Data object and raw embedded
+  resource, inherits the policy into child envelopes, and returns
+  `ErrDuplicateJSONKey` / `*DuplicateKeyError`.
 
 ```go
 inst := hal.New(

@@ -184,11 +184,11 @@ func marshalEmbeddedResource(value any, depth int, ancestors map[*Envelope]struc
 	case *Envelope:
 		return marshalEnvelopeChild(v, depth, ancestors, scope, strictJSON)
 	case stdjson.RawMessage:
-		return marshalRawEmbeddedValue(v)
+		return marshalRawEmbeddedValue(v, strictJSON)
 	case []any:
 		return marshalEmbeddedArray(v, depth, ancestors, scope, strictJSON)
 	default:
-		return marshalRawEmbeddedValue(value)
+		return marshalRawEmbeddedValue(value, strictJSON)
 	}
 }
 
@@ -204,7 +204,7 @@ func marshalEmbeddedArray(values []any, depth int, ancestors map[*Envelope]struc
 	return stdjson.Marshal(items)
 }
 
-func marshalRawEmbeddedValue(value any) ([]byte, error) {
+func marshalRawEmbeddedValue(value any, strictJSON bool) ([]byte, error) {
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidEmbedded, err)
@@ -215,6 +215,9 @@ func marshalRawEmbeddedValue(value any) ([]byte, error) {
 	}
 	if !utf8.Valid(raw) {
 		return nil, fmt.Errorf("%w: value marshals to invalid UTF-8", ErrInvalidEmbedded)
+	}
+	if err := scanDuplicateJSONKeys(raw, strictJSON); err != nil {
+		return nil, fmt.Errorf("hal: embedded resource: %w", err)
 	}
 	return raw, nil
 }

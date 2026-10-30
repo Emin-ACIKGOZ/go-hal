@@ -216,14 +216,22 @@ invalid declarations return `ErrInvalidCurie`. Generated declarations derive
 
 ### Strict JSON
 
-`WithStrictJSON` scans the marshaled non-empty Data object for duplicate member
-names at any depth. It applies to generated, raw, static, precomputed, and
-compiled envelope paths. It does not rescan final output and does not rescan
-precomputed links (those are scanned at compile time). Default marshaling stays
-permissive apart from precomputed input scanning. Errors are
-`ErrDuplicateJSONKey` and `*DuplicateKeyError{Key, Offset}`; the key display is
-capped and errors remain visible through `errors.Is`/`errors.As`, including
-through `json.MarshalerError`.
+`WithStrictJSON` scans each envelope's marshaled non-empty Data object and each
+raw embedded resource for duplicate member names at any depth. It applies to
+generated, raw, static, precomputed, and compiled envelope paths, and the policy
+is inherited by embedded child envelopes transitively (the effective policy is
+parent OR child). A strict parent therefore covers a permissive child, while a
+strict child stays strict under a permissive parent. It does not rescan final
+output, precomputed links (those are scanned at compile time), or a child's
+already-scanned output. Default marshaling stays permissive apart from
+precomputed input scanning.
+
+RFC 8259 §4 makes unique names a SHOULD, not a HAL MUST: duplicate names are
+valid JSON but non-interoperable, so this is opt-in hardening. Errors are
+`ErrDuplicateJSONKey` and `*DuplicateKeyError{Key, Offset}`; `Offset` is relative
+to the scanned value (the root Data object or that embedded resource), not the
+final document. The key display is capped and errors remain visible through
+`errors.Is`/`errors.As`, including through `json.MarshalerError`.
 
 ### Envelope mutation
 
