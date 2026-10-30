@@ -275,5 +275,5 @@ func (e *Envelope) addEmbeddedRawMeta(rel string, normalized any, meta relationM
 		e.embedded = make(map[string]any, defaultLinksCapacity)
 	}
 	appendEmbeddedValue(e.embedded, rel, normalized)
-	recordRelationToken(&e.embeddedTokens, meta, rel)
+	e.embeddedTokens.add(rel, meta)
 }

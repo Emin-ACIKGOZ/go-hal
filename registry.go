@@ -203,13 +203,18 @@ func validateStaticTarget(i *Instance, target any) reflect.Type {
 func compileStaticLinks(links []Link, inst *Instance) *PrecomputedLinks {
 	var curies []Link
 	linksMap := make(map[string]any, len(links))
+	index := make(relationIndex, len(links))
 	for _, l := range links {
 		l = normalizeLink(l)
-		if err := validateRelationName(l.Rel, linksMap); err != nil {
+		kind, meta, err := analyzeRelation(l.Rel)
+		if err != nil {
+			panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
+		}
+		if err := index.check(l.Rel, meta, linksMap); err != nil {
 			panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
 		}
 		if inst != nil && inst.strictRelations {
-			if err := inst.validateStrictRelation(l.Rel); err != nil {
+			if err := inst.validateStrictRelationKind(l.Rel, kind); err != nil {
 				panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
 			}
 		}
@@ -221,6 +226,7 @@ func compileStaticLinks(links []Link, inst *Instance) *PrecomputedLinks {
 		if l.Rel == relCuries {
 			curies = append(curies, l)
 		}
+		index.add(l.Rel, meta)
 		appendRelationValue(linksMap, l.Rel, l)
 	}
 	if err := validateCurieDeclarations(curies, inst != nil && inst.strictCuries); err != nil {

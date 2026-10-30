@@ -30,36 +30,13 @@ func appendRelationValue(values map[string]any, rel string, val any) {
 	}
 }
 
-// validateRelationName enforces the default relation hardening and rejects
-// bare-token case collisions within one relation namespace. It is used by
-// one-shot validation paths such as RegisterStatic, precomputed input, and the
-// atomic AddCachedLink helper.
-func validateRelationName(rel string, existing map[string]any) error {
-	_, folded, isBare, err := analyzeRelation(rel)
-	if err != nil {
-		return err
-	}
-	if !isBare {
-		return nil
-	}
-	for name := range existing {
-		if name == rel {
-			continue
-		}
-		if previous, ok := collisionToken(name); ok && previous == folded {
-			return fmt.Errorf("%w: bare token %q collides with %q", ErrInvalidRelation, rel, name)
-		}
-	}
-	return nil
-}
-
-func analyzeRelation(rel string) (relation.Kind, string, bool, error) {
+func analyzeRelation(rel string) (relation.Kind, relationMeta, error) {
 	kind, err := analyzeRelationKind(rel)
 	if err != nil {
-		return kind, "", false, err
+		return kind, relationMeta{}, err
 	}
 	folded, isBare := collisionToken(rel)
-	return kind, folded, isBare, nil
+	return kind, relationMeta{folded: folded, isBare: isBare}, nil
 }
 
 func analyzeRelationKind(rel string) (relation.Kind, error) {
@@ -85,17 +62,21 @@ func collisionToken(rel string) (string, bool) {
 }
 
 type relationMeta struct {
-	kind   relation.Kind
 	folded string
 	isBare bool
 }
 
-func buildRelationIndex(existing map[string]any) map[string]string {
+// relationIndex maps an ASCII-folded bare token to the relation spelling that
+// first used it. Only bare tokens participate; CURIEs, URIs, and relative
+// references remain case-sensitive in v1.
+type relationIndex map[string]string
+
+func relationIndexFromMap(existing map[string]any) relationIndex {
 	size := len(existing) + 1
 	if size < defaultLinksCapacity {
 		size = defaultLinksCapacity
 	}
-	index := make(map[string]string, size)
+	index := make(relationIndex, size)
 	for name := range existing {
 		if folded, ok := collisionToken(name); ok {
 			index[folded] = name
@@ -104,27 +85,29 @@ func buildRelationIndex(existing map[string]any) map[string]string {
 	return index
 }
 
-func checkRelationCollision(rel, folded string, isBare bool, existing map[string]any, index *map[string]string) error {
-	if !isBare {
+// check reports a case-insensitive bare-token collision. The first check on an
+// envelope without an index rebuilds it from the authoritative relation map.
+func (idx *relationIndex) check(rel string, meta relationMeta, existing map[string]any) error {
+	if !meta.isBare {
 		return nil
 	}
-	if *index == nil {
-		*index = buildRelationIndex(existing)
+	if *idx == nil {
+		*idx = relationIndexFromMap(existing)
 	}
-	if previous, exists := (*index)[folded]; exists && previous != rel {
+	if previous, exists := (*idx)[meta.folded]; exists && previous != rel {
 		return fmt.Errorf("%w: bare token %q collides with %q", ErrInvalidRelation, rel, previous)
 	}
 	return nil
 }
 
-func recordRelationToken(index *map[string]string, meta relationMeta, rel string) {
+func (idx *relationIndex) add(rel string, meta relationMeta) {
 	if !meta.isBare {
 		return
 	}
-	if *index == nil {
-		*index = make(map[string]string, defaultLinksCapacity)
+	if *idx == nil {
+		*idx = make(relationIndex, defaultLinksCapacity)
 	}
-	(*index)[meta.folded] = rel
+	(*idx)[meta.folded] = rel
 }
 
 func validateRelationSyntax(rel string) error {
@@ -140,12 +123,12 @@ func validateRelationSyntax(rel string) error {
 // validateRelationForLinkAdd performs syntax, strict-relation, and indexed
 // collision checks for AddLink/AddEmbedded. The returned metadata lets the
 // caller record the folded token without classifying or folding twice.
-func (e *Envelope) validateRelationForLinkAdd(rel string, existing map[string]any, index *map[string]string) (relationMeta, error) {
-	kind, folded, isBare, err := analyzeRelation(rel)
+func (e *Envelope) validateRelationForLinkAdd(rel string, existing map[string]any, index *relationIndex) (relationMeta, error) {
+	kind, meta, err := analyzeRelation(rel)
 	if err != nil {
 		return relationMeta{}, err
 	}
-	if err := checkRelationCollision(rel, folded, isBare, existing, index); err != nil {
+	if err := index.check(rel, meta, existing); err != nil {
 		return relationMeta{}, err
 	}
 	if e.instance != nil && e.instance.strictRelations {
@@ -153,7 +136,7 @@ func (e *Envelope) validateRelationForLinkAdd(rel string, existing map[string]an
 			return relationMeta{}, err
 		}
 	}
-	return relationMeta{kind: kind, folded: folded, isBare: isBare}, nil
+	return meta, nil
 }
 
 func (i *Instance) validateStrictRelation(rel string) error {
@@ -187,16 +170,16 @@ func (i *Instance) hasCuriePrefix(prefix string) bool {
 }
 
 func validateRelationCollisions(names []string) error {
-	seen := make(map[string]string, len(names))
+	index := make(relationIndex, len(names))
 	for _, name := range names {
-		folded, ok := collisionToken(name)
-		if !ok {
-			continue
+		_, meta, err := analyzeRelation(name)
+		if err != nil {
+			return err
 		}
-		if previous, exists := seen[folded]; exists && previous != name {
-			return fmt.Errorf("%w: bare token %q collides with %q", ErrInvalidRelation, name, previous)
+		if err := index.check(name, meta, nil); err != nil {
+			return err
 		}
-		seen[folded] = name
+		index.add(name, meta)
 	}
 	return nil
 }

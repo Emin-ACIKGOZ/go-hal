@@ -380,3 +380,16 @@ func BenchmarkRegisterStatic(b *testing.B) {
 		b.Fatal(err)
 	}
 }
+
+func BenchmarkRegisterStatic_ManyLinks(b *testing.B) {
+	links := make([]Link, 64)
+	for i := range links {
+		links[i] = Link{Rel: fmt.Sprintf("rel-%02d", i), Href: "/x"}
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		RegisterStatic(New(), &TestData{}, links)
+	}
+}

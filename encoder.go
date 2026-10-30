@@ -653,5 +653,5 @@ func (e *Envelope) addLinkRawMeta(rel string, val any, meta relationMeta) {
 		e.links = make(map[string]any, defaultLinksCapacity)
 	}
 	appendRelationValue(e.links, rel, val)
-	recordRelationToken(&e.linkTokens, meta, rel)
+	e.linkTokens.add(rel, meta)
 }
