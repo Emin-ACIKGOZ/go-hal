@@ -110,3 +110,45 @@ func TestWithStrictRelations_DoesNotChangeDefault(t *testing.T) {
 		t.Fatalf("default relation rejected: %v", err)
 	}
 }
+
+func TestWithStrictRelations_AcceptsDeclaredNonSchemeCurie(t *testing.T) {
+	t.Parallel()
+
+	inst := New(WithStrictRelations(), WithStrictCuries())
+	inst.RegisterCurie("_private", "https://docs.example/{rel}")
+
+	env := inst.WrapRaw(&embeddedTestUser{ID: 1})
+	env.AddLink(Link{Rel: "_private:widget", Href: "/widgets/1"})
+
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("declared non-scheme CURIE rejected: %v", err)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	if len(relationObjects(t, root, "_private:widget")) != 1 {
+		t.Fatalf("declared CURIE relation lost: %s", b)
+	}
+	curies := relationObjects(t, root, "curies")
+	if len(curies) != 1 || curies[0]["name"] != "_private" {
+		t.Fatalf("curies = %#v, want _private declaration", curies)
+	}
+}
+
+func TestWithStrictRelations_UndeclaredNonAuthorityFormIsOpaqueURI(t *testing.T) {
+	t.Parallel()
+
+	env := New(WithStrictRelations()).WrapRaw(&embeddedTestUser{ID: 1})
+	env.AddLink(Link{Rel: "acme:widget", Href: "/widgets/1"})
+
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("undeclared non-authority form rejected: %v", err)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	if len(relationObjects(t, root, "acme:widget")) != 1 {
+		t.Fatalf("opaque URI relation lost: %s", b)
+	}
+	if _, exists := root["_links"].(map[string]any)["curies"]; exists {
+		t.Fatalf("undeclared prefix produced a declaration: %s", b)
+	}
+}

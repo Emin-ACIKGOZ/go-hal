@@ -75,15 +75,13 @@ func (i *Instance) validateStrictRelation(rel string) error {
 	if err := validateRelationSyntax(rel); err != nil {
 		return err
 	}
-	kind := relation.Classify(rel)
+	if prefix, _, ok := relation.SplitCurie(rel); ok && i.hasCuriePrefix(prefix) {
+		return nil // declared CURIEs may use non-scheme prefixes such as "_private"
+	}
 	if relation.HasScheme(rel) {
-		prefix, _, ok := relation.SplitCurie(rel)
-		if ok && i.hasCuriePrefix(prefix) {
-			return nil
-		}
 		return nil // undeclared scheme-like relations are opaque URIs
 	}
-	if kind == relation.Token {
+	if relation.Classify(rel) == relation.Token {
 		if !relation.IsToken(rel) {
 			return fmt.Errorf("%w: %q is not a lowercase registered token", ErrInvalidRelation, rel)
 		}
