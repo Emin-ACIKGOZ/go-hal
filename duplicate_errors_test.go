@@ -96,3 +96,21 @@ func BenchmarkFindDuplicateJSONKeys(b *testing.B) {
 		}
 	}
 }
+
+func TestDuplicateJSONKey_OffsetPointsAtDuplicateKey(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"a":1, "a":2}`)
+	err := findDuplicateJSONKeys(data)
+	var dup *DuplicateKeyError
+	if !errors.As(err, &dup) {
+		t.Fatalf("error %v is not *DuplicateKeyError", err)
+	}
+	want := strings.LastIndex(string(data), `"a"`)
+	if int(dup.Offset) != want {
+		t.Fatalf("Offset = %d, want duplicate key start %d", dup.Offset, want)
+	}
+	if dup.Offset >= int64(len(data)) {
+		t.Fatalf("Offset = %d is outside input length %d", dup.Offset, len(data))
+	}
+}

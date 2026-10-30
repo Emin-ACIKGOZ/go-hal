@@ -257,3 +257,18 @@ func TestRelationShape_LastOverrideWins(t *testing.T) {
 		t.Fatal("later relation-shape override did not win")
 	}
 }
+
+func TestLinkShape_String(t *testing.T) {
+	t.Parallel()
+
+	for shape, want := range map[LinkShape]string{
+		ShapeAuto:     "auto",
+		ShapeArray:    "array",
+		ShapeObject:   "object",
+		LinkShape(99): "auto",
+	} {
+		if got := shape.String(); got != want {
+			t.Errorf("LinkShape(%d).String() = %q, want %q", shape, got, want)
+		}
+	}
+}

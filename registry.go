@@ -98,7 +98,9 @@ func Register[T any](gen func(context.Context, *T) []Link) {
 
 // RegisterCurie registers a CURIE (Compact URI) prefix on the DefaultInstance.
 // CURIEs allow shortened link relations like "acme:widget" that expand to full URIs.
-// It panics if prefix is empty or contains whitespace, or if href is empty.
+// It panics for an unusable prefix (empty, whitespace/control-bearing,
+// non-UTF-8, colon-bearing, or failing the strict NCName subset), an empty
+// href, or a strict href/templated violation.
 //
 // # Example
 //
@@ -124,7 +126,10 @@ func Wrap(ctx context.Context, data any) *Envelope {
 // RegisterCurie adds a CURIE (Compact URI) mapping to the instance.
 // These are used to shorten link relations in the output JSON.
 //
-// It panics if prefix is empty or contains whitespace, or if href is empty.
+// It panics for an unusable prefix (empty, whitespace/control-bearing,
+// non-UTF-8, colon-bearing, or failing the strict NCName subset), an empty
+// href, or a strict href/templated violation. Generated declarations derive
+// templated from the href template.
 func (i *Instance) RegisterCurie(prefix, href string) {
 	if err := validateCurieDeclarations([]Link{{Name: prefix, Href: href, Templated: curieHrefTemplated(href)}}, i.strictCuries); err != nil {
 		panic(fmt.Sprintf("hal: RegisterCurie: %v", err))

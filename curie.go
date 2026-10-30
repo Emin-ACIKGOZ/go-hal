@@ -20,8 +20,10 @@ import (
 // name. Duplicate declarations are ambiguous and not interoperable.
 var ErrDuplicateCurie = errors.New("hal: duplicate CURIE declaration")
 
-// ErrInvalidCurie is returned when a CURIE declaration has an empty or
-// whitespace-bearing name, or an empty href.
+// ErrInvalidCurie is returned when a CURIE declaration has an unusable name
+// (empty, whitespace/control-bearing, non-UTF-8, colon-bearing, or failing the
+// strict ASCII NCName subset), an empty href, or a strict href/templated
+// violation.
 var ErrInvalidCurie = errors.New("hal: invalid CURIE declaration")
 
 // relationPrefix returns the CURIE prefix in a relation such as "acme:widget".
@@ -147,8 +149,6 @@ func validateCurieDeclarations(declarations []Link, strict bool) error {
 	return nil
 }
 
-// curieLinks normalizes the user-supplied curies relation to a slice. A single
-// Link is the shape produced by one AddLink call; repeated calls produce []any.
 func validateStrictCurieHref(declaration Link) error {
 	tmpl, err := uritemplate.Parse(declaration.Href)
 	if err != nil {
@@ -168,6 +168,8 @@ func curieHrefTemplated(href string) bool {
 	return err == nil && tmpl.HasExpressions()
 }
 
+// curieLinks normalizes the user-supplied curies relation to a slice. A single
+// Link is the shape produced by one AddLink call; repeated calls produce []any.
 func curieLinks(value any) ([]Link, error) {
 	switch v := value.(type) {
 	case nil:

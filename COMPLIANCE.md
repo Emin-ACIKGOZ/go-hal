@@ -129,7 +129,7 @@ declaration context, an undeclared `acme:widget` is accepted as an opaque URI.
 always emits an array, including for one link. `ShapeObject` requires at most one
 link per relation and returns/panics with `ErrLinkShape` for repeats. Static
 links and Collection apply the instance policy; `curies` always stays an array.
-Precomputed JSON is never reshaped.
+Shape policy never rewrites precomputed JSON.
 
 ### CURIE declarations
 
@@ -176,10 +176,12 @@ the matching strict flag with deferred `ErrInvalidLink` or `ErrInvalidCurie`.
 A nil handle has `WrapRaw` semantics; the zero handle is an empty link set and
 is always valid.
 
-Precomputed CURIE declarations are mirrored on the handle. Registered CURIEs
-still resolve at wrap time, preserving cross-instance reuse. Cached bytes are not
-reshaped or re-encoded; only deliberate `_embedded` splicing and CURIE
-declaration merging modify the output structure.
+Precomputed CURIE declarations are cached on the handle and used when
+registered declarations are merged. Registered CURIEs still resolve at wrap
+time, preserving cross-instance reuse. Cached bytes are preserved except for
+deliberate `_embedded` splicing and a byte-splice of only the `curies` member
+when registered declarations are added; all other cached bytes and unknown
+fields remain untouched.
 
 ### Static links
 

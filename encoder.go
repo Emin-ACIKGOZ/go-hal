@@ -245,7 +245,10 @@ func checkJSONStructure(b []byte) (bool, bool, error) {
 // decoding into a map.
 var ErrDuplicateJSONKey = errors.New("hal: duplicate JSON key")
 
-const duplicateKeyDisplayLimit = 128
+const (
+	duplicateKeyDisplayLimit = 128
+	jsonQuoteLen             = 2
+)
 
 // DuplicateKeyError reports the first duplicate object key and its byte offset.
 type DuplicateKeyError struct {
@@ -291,6 +294,7 @@ func newJSONTokenScanner(data []byte) *stdjson.Decoder {
 }
 
 type jsonDuplicateScanner struct {
+	data     []byte
 	stack    []jsonFrame
 	seenRoot bool
 	done     bool
@@ -298,10 +302,9 @@ type jsonDuplicateScanner struct {
 
 func findDuplicateJSONKeys(data []byte) error {
 	dec := newJSONTokenScanner(data)
-	var scanner jsonDuplicateScanner
+	scanner := jsonDuplicateScanner{data: data}
 
 	for {
-		offset := dec.InputOffset()
 		tok, err := dec.Token()
 		if errors.Is(err, io.EOF) {
 			return scanner.finish()
@@ -309,7 +312,7 @@ func findDuplicateJSONKeys(data []byte) error {
 		if err != nil {
 			return err
 		}
-		if err := scanner.scan(tok, offset); err != nil {
+		if err := scanner.scan(tok, dec.InputOffset()); err != nil {
 			return err
 		}
 	}
@@ -322,7 +325,7 @@ func (s *jsonDuplicateScanner) finish() error {
 	return nil
 }
 
-func (s *jsonDuplicateScanner) scan(tok stdjson.Token, offset int64) error {
+func (s *jsonDuplicateScanner) scan(tok stdjson.Token, tokenEnd int64) error {
 	if s.done {
 		return errors.New("unexpected trailing JSON value")
 	}
@@ -334,7 +337,7 @@ func (s *jsonDuplicateScanner) scan(tok stdjson.Token, offset int64) error {
 	if delim, ok := tok.(stdjson.Delim); ok {
 		s.stack, err = scanJSONDelimiter(s.stack, delim)
 	} else {
-		err = scanJSONObjectToken(s.stack, tok, offset)
+		err = scanJSONObjectToken(s.stack, tok, s.data, tokenEnd)
 	}
 	if err != nil {
 		return err
@@ -367,7 +370,7 @@ func scanJSONDelimiter(stack []jsonFrame, delim stdjson.Delim) ([]jsonFrame, err
 	}
 }
 
-func scanJSONObjectToken(stack []jsonFrame, tok stdjson.Token, offset int64) error {
+func scanJSONObjectToken(stack []jsonFrame, tok stdjson.Token, data []byte, tokenEnd int64) error {
 	n := len(stack)
 	if n == 0 || !stack[n-1].object {
 		return nil
@@ -382,11 +385,30 @@ func scanJSONObjectToken(stack []jsonFrame, tok stdjson.Token, offset int64) err
 		return fmt.Errorf("object key has type %T, want string", tok)
 	}
 	if _, exists := top.keys[key]; exists {
-		return newDuplicateKeyError(key, offset)
+		return newDuplicateKeyError(key, jsonKeyStart(data, tokenEnd))
 	}
 	top.keys[key] = struct{}{}
 	top.wantKey = false
 	return nil
+}
+
+func jsonKeyStart(data []byte, tokenEnd int64) int64 {
+	if tokenEnd <= 0 || tokenEnd > int64(len(data)) {
+		return tokenEnd
+	}
+	for i := int(tokenEnd) - jsonQuoteLen; i >= 0; i-- {
+		if data[i] != '"' {
+			continue
+		}
+		backslashes := 0
+		for j := i - 1; j >= 0 && data[j] == '\\'; j-- {
+			backslashes++
+		}
+		if backslashes%2 == 0 {
+			return int64(i)
+		}
+	}
+	return tokenEnd
 }
 
 // checkReservedHALFields reports a conflict only when a reserved name appears
