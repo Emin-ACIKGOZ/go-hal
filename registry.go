@@ -125,7 +125,7 @@ func Wrap(ctx context.Context, data any) *Envelope {
 //
 // It panics if prefix is empty or contains whitespace, or if href is empty.
 func (i *Instance) RegisterCurie(prefix, href string) {
-	if err := validateCurieDeclarations([]Link{{Name: prefix, Href: href}}); err != nil {
+	if err := validateCurieDeclarations([]Link{{Name: prefix, Href: href}}, i.strictCuries); err != nil {
 		panic(fmt.Sprintf("hal: RegisterCurie: %v", err))
 	}
 	i.mu.Lock()
@@ -216,7 +216,7 @@ func compileStaticLinks(links []Link, inst *Instance) *PrecomputedLinks {
 		}
 		appendRelationValue(linksMap, l.Rel, l)
 	}
-	if err := validateCurieDeclarations(curies); err != nil {
+	if err := validateCurieDeclarations(curies, inst != nil && inst.strictCuries); err != nil {
 		panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
 	}
 	normalizeStaticCuries(linksMap)
@@ -291,7 +291,7 @@ func CompilePrecomputedLinksStrict(linksJSON []byte) (*PrecomputedLinks, error) 
 }
 
 func compilePrecomputedLinks(linksJSON []byte, strictLinks, strictCuries bool) (*PrecomputedLinks, error) {
-	normalized, prefixes, curies, err := normalizePrecomputedLinksPolicy(linksJSON, strictLinks)
+	normalized, prefixes, curies, err := normalizePrecomputedLinksPolicy(linksJSON, strictLinks, strictCuries)
 	if err != nil {
 		return nil, err
 	}
@@ -419,11 +419,11 @@ func (i *Instance) wrapPrecomputedHandle(data any, links *PrecomputedLinks) *Env
 // so callers can pass either representation. Invalid input is reported instead
 // of being spliced into the output.
 func normalizePrecomputedLinks(linksJSON []byte) ([]byte, []string, error) {
-	normalized, prefixes, _, err := normalizePrecomputedLinksPolicy(linksJSON, false)
+	normalized, prefixes, _, err := normalizePrecomputedLinksPolicy(linksJSON, false, false)
 	return normalized, prefixes, err
 }
 
-func normalizePrecomputedLinksPolicy(linksJSON []byte, strictLinks bool) ([]byte, []string, []Link, error) {
+func normalizePrecomputedLinksPolicy(linksJSON []byte, strictLinks, strictCuries bool) ([]byte, []string, []Link, error) {
 	linksJSON = bytes.TrimSpace(linksJSON)
 	if len(linksJSON) == 0 {
 		return nil, nil, nil, nil
@@ -434,10 +434,10 @@ func normalizePrecomputedLinksPolicy(linksJSON []byte, strictLinks bool) ([]byte
 	}
 
 	if rawLinks, ok := fields[fieldLinks]; ok {
-		return normalizeWrappedPrecomputedLinks(linksJSON, fields, rawLinks, strictLinks)
+		return normalizeWrappedPrecomputedLinks(linksJSON, fields, rawLinks, strictLinks, strictCuries)
 	}
 
-	curies, err := validatePrecomputedLinkRelations(fields, strictLinks)
+	curies, err := validatePrecomputedLinkRelations(fields, strictLinks, strictCuries)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -466,7 +466,7 @@ func normalizeWrappedPrecomputedLinks(
 	linksJSON []byte,
 	fields map[string]stdjson.RawMessage,
 	rawLinks stdjson.RawMessage,
-	strictLinks bool,
+	strictLinks, strictCuries bool,
 ) ([]byte, []string, []Link, error) {
 	if len(fields) != 1 {
 		return nil, nil, nil, errors.New("hal: wrapped precomputed links must contain only _links")
@@ -475,7 +475,7 @@ func normalizeWrappedPrecomputedLinks(
 	if err := stdjson.Unmarshal(rawLinks, &links); err != nil || links == nil {
 		return nil, nil, nil, errors.New("hal: precomputed _links must be a JSON object")
 	}
-	curies, err := validatePrecomputedLinkRelations(links, strictLinks)
+	curies, err := validatePrecomputedLinkRelations(links, strictLinks, strictCuries)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -493,7 +493,7 @@ func wrapPrecomputedLinks(linksJSON []byte) []byte {
 
 // validatePrecomputedLinkRelations checks the HAL link relation shape before
 // pre-serialized links are trusted for byte splicing.
-func validatePrecomputedLinkRelations(links map[string]stdjson.RawMessage, strictLinks bool) ([]Link, error) {
+func validatePrecomputedLinkRelations(links map[string]stdjson.RawMessage, strictLinks, strictCuries bool) ([]Link, error) {
 	names := make([]string, 0, len(links))
 	for rel := range links {
 		names = append(names, rel)
@@ -514,7 +514,7 @@ func validatePrecomputedLinkRelations(links map[string]stdjson.RawMessage, stric
 		}
 	}
 	if raw, ok := links[relCuries]; ok {
-		decoded, err := validatePrecomputedCuries(raw, strictLinks)
+		decoded, err := validatePrecomputedCuries(raw, strictLinks, strictCuries)
 		if err != nil {
 			return nil, fmt.Errorf("hal: precomputed curies: %w", err)
 		}
@@ -523,12 +523,12 @@ func validatePrecomputedLinkRelations(links map[string]stdjson.RawMessage, stric
 	return curies, nil
 }
 
-func validatePrecomputedCuries(raw stdjson.RawMessage, strictLinks bool) ([]Link, error) {
-	_, declarations, err := decodePrecomputedCurieRaw(raw, strictLinks)
+func validatePrecomputedCuries(raw stdjson.RawMessage, strictLinks, strictCuries bool) ([]Link, error) {
+	_, declarations, err := decodePrecomputedCurieRaw(raw, strictLinks, strictCuries)
 	return declarations, err
 }
 
-func decodePrecomputedCurieRaw(raw stdjson.RawMessage, strictLinks bool) ([]stdjson.RawMessage, []Link, error) {
+func decodePrecomputedCurieRaw(raw stdjson.RawMessage, strictLinks, strictCuries bool) ([]stdjson.RawMessage, []Link, error) {
 	var rawDeclarations []stdjson.RawMessage
 	if err := stdjson.Unmarshal(raw, &rawDeclarations); err != nil {
 		return nil, nil, errors.New("must be an array of link objects")
@@ -546,7 +546,7 @@ func decodePrecomputedCurieRaw(raw stdjson.RawMessage, strictLinks bool) ([]stdj
 		}
 		declarations = append(declarations, declaration)
 	}
-	if err := validateCurieDeclarations(declarations); err != nil {
+	if err := validateCurieDeclarations(declarations, strictCuries); err != nil {
 		return nil, nil, err
 	}
 	return rawDeclarations, declarations, nil
@@ -782,7 +782,7 @@ func mergePrecomputedCuries(linksJSON []byte, registered []Link) ([]byte, error)
 	var user []Link
 	if raw, ok := links[relCuries]; ok {
 		var err error
-		userRaw, user, err = decodePrecomputedCurieRaw(raw, false)
+		userRaw, user, err = decodePrecomputedCurieRaw(raw, false, false)
 		if err != nil {
 			return nil, fmt.Errorf("hal: precomputed curies: %w", err)
 		}

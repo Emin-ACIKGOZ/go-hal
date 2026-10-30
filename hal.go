@@ -115,6 +115,17 @@ func WithRelationShape(rel string, shape LinkShape) InstanceOption {
 	}
 }
 
+// WithStrictCuries enables strict CURIE declaration validation on AddLink,
+// merge, RegisterCurie, RegisterStatic, and precomputed wrapping. It is
+// independent of WithStrictMode.
+//
+// Strict names use the ASCII NCName subset [A-Za-z_][A-Za-z0-9._-]*.
+func WithStrictCuries() InstanceOption {
+	return func(i *Instance) {
+		i.strictCuries = true
+	}
+}
+
 // WithStrictRelations enables strict relation grammar on AddLink, AddEmbedded,
 // generated links, static links, and precomputed wrapping. It is independent of
 // WithStrictMode.

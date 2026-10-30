@@ -15,7 +15,7 @@ func TestCurieName_RejectsColonAndControls(t *testing.T) {
 	invalid := []string{"", "ac:me", "ac\x00me", "ac\nme", "ac\tme", "ac me", "ac\xffme"}
 	for _, name := range invalid {
 		t.Run(name, func(t *testing.T) {
-			if err := validateCurieName(name); !errors.Is(err, ErrInvalidCurie) {
+			if err := validateCurieName(name, false); !errors.Is(err, ErrInvalidCurie) {
 				t.Fatalf("validateCurieName(%q) = %v, want ErrInvalidCurie", name, err)
 			}
 		})
@@ -23,7 +23,7 @@ func TestCurieName_RejectsColonAndControls(t *testing.T) {
 
 	valid := []string{"acme", "v1", "a_b.c-d", "_private", "éclair"}
 	for _, name := range valid {
-		if err := validateCurieName(name); err != nil {
+		if err := validateCurieName(name, false); err != nil {
 			t.Errorf("validateCurieName(%q) = %v, want nil", name, err)
 		}
 	}

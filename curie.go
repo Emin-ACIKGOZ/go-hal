@@ -76,12 +76,18 @@ func anyRelationPrefixes(links map[string]any) []string {
 	return sortedPrefixSet(set)
 }
 
-func validateCurieName(name string) error {
+func validateCurieName(name string, strict bool) error {
 	if name == "" {
 		return fmt.Errorf("%w: name must be non-empty", ErrInvalidCurie)
 	}
 	if !utf8.ValidString(name) {
 		return fmt.Errorf("%w: name %q must be valid UTF-8", ErrInvalidCurie, name)
+	}
+	if strict {
+		if !isStrictCurieName(name) {
+			return fmt.Errorf("%w: name %q is not an ASCII NCName", ErrInvalidCurie, name)
+		}
+		return nil
 	}
 	if strings.ContainsRune(name, ':') {
 		return fmt.Errorf("%w: name %q must not contain a colon", ErrInvalidCurie, name)
@@ -94,11 +100,34 @@ func validateCurieName(name string) error {
 	return nil
 }
 
-func validateCurieDeclarations(declarations []Link) error {
+//nolint:cyclop // Flat NCName character-class scanner.
+func isStrictCurieName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if i == 0 {
+			if c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c == '_' {
+				continue
+			}
+			return false
+		}
+		switch {
+		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9':
+		case c == '.', c == '_', c == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func validateCurieDeclarations(declarations []Link, strict bool) error {
 	seen := make(map[string]struct{}, len(declarations))
 	for _, declaration := range declarations {
 		name := declaration.Name
-		if err := validateCurieName(name); err != nil {
+		if err := validateCurieName(name, strict); err != nil {
 			return err
 		}
 		if strings.TrimSpace(declaration.Href) == "" {
@@ -140,12 +169,12 @@ func curieLinks(value any) ([]Link, error) {
 // mergeCuries combines user declarations with generated declarations. User
 // declarations win on name collisions; duplicates within either input were
 // already rejected.
-func mergeCuries(existing any, generated []Link) ([]Link, error) {
+func mergeCuries(existing any, generated []Link, strict bool) ([]Link, error) {
 	user, err := curieLinks(existing)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateCurieDeclarations(user); err != nil {
+	if err := validateCurieDeclarations(user, strict); err != nil {
 		return nil, err
 	}
 

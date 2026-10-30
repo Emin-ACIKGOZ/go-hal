@@ -405,7 +405,7 @@ func (e Envelope) marshalMeta(depth int, ancestors map[*Envelope]struct{}, scope
 		for rel, value := range e.links {
 			links[rel] = value
 		}
-		merged, err := mergeCuries(links[relCuries], generated)
+		merged, err := mergeCuries(links[relCuries], generated, e.instance != nil && e.instance.strictCuries)
 		if err != nil {
 			return nil, err
 		}
