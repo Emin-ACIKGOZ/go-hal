@@ -247,7 +247,8 @@ declarations with the same name. Duplicate names within one source return
 `ErrDuplicateCurie`; names that are empty, whitespace/control-bearing,
 non-UTF-8, or contain a colon and empty hrefs return `ErrInvalidCurie`.
 `WithStrictCuries` additionally requires the ASCII NCName subset.
-`RegisterCurie` panics immediately for invalid names or hrefs.
+`RegisterCurie` panics for invalid names, empty hrefs, or strict
+href/templated violations.
 
 Generated declarations derive `templated` from the registered href template, so
 a declaration never claims `templated: true` for a non-template. Default mode

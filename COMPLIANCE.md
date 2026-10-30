@@ -157,7 +157,8 @@ derive `templated` from the registered href template so they never claim
 
 Duplicate names in one source return `ErrDuplicateCurie`. User declarations win
 over registered declarations. `RegisterCurie` derives `templated` and panics on
-invalid names, hrefs, or strict violations; `RegisterStatic` panics likewise.
+invalid names, empty hrefs, or strict href/templated violations;
+`RegisterStatic` panics likewise.
 
 Embedded `*Envelope` children inherit parent declarations. A child-local
 declaration overrides the parent for that child and its descendants. Children
