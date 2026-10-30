@@ -393,3 +393,61 @@ func BenchmarkRegisterStatic_ManyLinks(b *testing.B) {
 		RegisterStatic(New(), &TestData{}, links)
 	}
 }
+
+// --- Benchmark: Embedded resources and CURIE splicing ---
+
+func benchmarkEmbeddedChildren() []*Envelope {
+	return []*Envelope{
+		New().WrapRaw(&TestData{ID: 2, Name: "Bob", Email: "bob@example.com", Age: 31}),
+		New().WrapRaw(&TestData{ID: 3, Name: "Cara", Email: "cara@example.com", Age: 29}),
+	}
+}
+
+func BenchmarkMarshal_Embedded(b *testing.B) {
+	parent := New().WrapRaw(benchmarkData())
+	parent.AddEmbedded("widgets", benchmarkEmbeddedChildren())
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := json.Marshal(parent); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkMarshal_CuriesEmbedded(b *testing.B) {
+	inst := New()
+	inst.RegisterCurie("acme", "https://docs.example/rels/{rel}")
+
+	parent := inst.WrapRaw(benchmarkData())
+	parent.AddEmbedded("acme:widgets", benchmarkEmbeddedChildren())
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := json.Marshal(parent); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkMarshal_CuriesEmbeddedPrecomputed(b *testing.B) {
+	inst := New()
+	inst.RegisterCurie("acme", "https://docs.example/rels/{rel}")
+	handle, err := CompilePrecomputedLinks([]byte(`{"self":{"href":"/users/42"}}`))
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	parent := inst.WrapPrecomputedLinks(benchmarkData(), handle)
+	parent.AddEmbedded("acme:widgets", benchmarkEmbeddedChildren())
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := json.Marshal(parent); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
