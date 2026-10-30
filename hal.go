@@ -95,6 +95,15 @@ func WithStrictMode() InstanceOption {
 	}
 }
 
+// WithLinkShape sets the default relation shape. ShapeAuto keeps the default
+// object-for-one/array-for-many behavior; ShapeArray always emits arrays;
+// ShapeObject requires at most one link per relation.
+func WithLinkShape(shape LinkShape) InstanceOption {
+	return func(i *Instance) {
+		i.linkShape = shape
+	}
+}
+
 // WithStrictRelations enables strict relation grammar on AddLink, AddEmbedded,
 // generated links, static links, and precomputed wrapping. It is independent of
 // WithStrictMode.

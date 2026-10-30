@@ -53,7 +53,11 @@ func (i *Instance) Collection(ctx context.Context, items any, total int, selfLin
 	}
 
 	links := make(map[string]any)
-	links["self"] = selfLink
+	shaped, _, err := applyLinkShape("self", selfLink, i.shapeFor("self"))
+	if err != nil {
+		panic(fmt.Sprintf("hal: Collection: %v", err))
+	}
+	links["self"] = shaped
 
 	return &CollectionPage{
 		Links: links,

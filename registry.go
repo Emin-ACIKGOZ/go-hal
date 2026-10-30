@@ -49,6 +49,8 @@ type Instance struct {
 	strictLinks     bool
 	strictRelations bool
 	strictCuries    bool
+	linkShape       LinkShape
+	relationShapes  map[string]LinkShape
 }
 
 // New creates a new HAL Instance.
@@ -218,6 +220,11 @@ func compileStaticLinks(links []Link, inst *Instance) *PrecomputedLinks {
 		panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
 	}
 	normalizeStaticCuries(linksMap)
+	if inst != nil {
+		if err := applyStaticLinkShapes(linksMap, inst); err != nil {
+			panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
+		}
+	}
 
 	pre := &PrecomputedLinks{
 		prefixes:     linkRelationPrefixes(links),

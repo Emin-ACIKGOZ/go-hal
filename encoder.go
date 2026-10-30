@@ -412,6 +412,14 @@ func (e Envelope) marshalMeta(depth int, ancestors map[*Envelope]struct{}, scope
 		links[relCuries] = merged
 	}
 
+	if e.instance != nil {
+		shaped, err := applyLinkShapes(links, e.instance.shapeFor)
+		if err != nil {
+			return nil, err
+		}
+		links = shaped
+	}
+
 	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, scope)
 	if err != nil {
 		return nil, err
