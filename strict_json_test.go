@@ -342,6 +342,23 @@ func TestWithStrictJSON_RawScanIsTransitive(t *testing.T) {
 	}
 }
 
+func TestWithStrictJSON_HiddenEnvelopeInsideRawMapIsScanned(t *testing.T) {
+	t.Parallel()
+
+	hidden := New().WrapRaw(json.RawMessage(`{"a":1,"a":2}`))
+
+	parent := New(WithStrictJSON()).WrapRaw(&embeddedTestUser{ID: 1})
+	parent.AddEmbedded("hidden", map[string]any{"resource": hidden})
+
+	out, err := json.Marshal(parent)
+	if !errors.Is(err, ErrDuplicateJSONKey) {
+		t.Fatalf("error = %v (output %s), want ErrDuplicateJSONKey", err, out)
+	}
+	if len(out) != 0 {
+		t.Fatalf("error returned partial output: %s", out)
+	}
+}
+
 func BenchmarkMarshal_StrictEmbedded(b *testing.B) {
 	parent := New(WithStrictJSON()).WrapRaw(&embeddedTestUser{ID: 1})
 	parent.AddEmbedded("child", json.RawMessage(`{"id":2,"name":"clean"}`))

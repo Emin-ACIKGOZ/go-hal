@@ -213,6 +213,34 @@ func TestStrictRelations_PrecomputedChildInheritsParentDeclaration(t *testing.T)
 	}
 }
 
+func TestStrictRelations_GeneratedChildInheritsPrecomputedParentDeclaration(t *testing.T) {
+	t.Parallel()
+
+	parentHandle, err := CompilePrecomputedLinks([]byte(`{
+		"curies":[{"name":"_private","href":"https://docs.example/rels/{rel}","templated":true}],
+		"self":{"href":"/parent"}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parent := New(WithStrictRelations()).WrapPrecomputedLinks(&embeddedTestUser{ID: 1}, parentHandle)
+	child := New(WithStrictRelations()).WrapRaw(&embeddedTestUser{ID: 2})
+	child.AddEmbedded("_private:widgets", &embeddedTestUser{ID: 3})
+	parent.AddEmbedded("children", child)
+
+	b, err := json.Marshal(parent)
+	if err != nil {
+		t.Fatalf("generated child did not inherit the precomputed parent declaration: %v", err)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	childRoot := embeddedObject(t, root, "children")
+	embeddedChild := embeddedObject(t, childRoot, "_private:widgets")
+	if embeddedChild["id"] != json.Number("3") {
+		t.Fatalf("child relation lost: %s", b)
+	}
+}
+
 func TestStrictRelations_SiblingDeclarationsDoNotLeak(t *testing.T) {
 	t.Parallel()
 

@@ -192,6 +192,7 @@ func FuzzWrapPrecomputed(f *testing.F) {
 	f.Add([]byte(`{"_links":{"self":{"href":"/x"}}}`), []byte(`null`))
 	f.Add([]byte(`{"_links":{"self":{"href":"/x"}}}`), []byte(`[1,2]`))
 	f.Add([]byte(`{"_links":{"self":{"href":"/x","href":"/y"}}}`), []byte(`{"id":1}`))
+	f.Add([]byte(`{"find":{"href":"/orders{?id}"}}`), []byte(`{"id":1}`))
 	f.Add(fuzzPositiveLinks, fuzzPositiveData)
 
 	f.Fuzz(func(t *testing.T, linksJSON, data []byte) {
@@ -251,6 +252,41 @@ func FuzzWrapPrecomputed(f *testing.F) {
 			if err := findDuplicateKeys(out); err != nil {
 				t.Fatalf("duplicate keys in output: %v\n%s", err, out)
 			}
+		}
+	})
+}
+
+func FuzzStrictPrecomputedGuard(f *testing.F) {
+	f.Add(fuzzPositiveLinks, fuzzPositiveData)
+	f.Add([]byte(`{"find":{"href":"/orders{?id}"}}`), []byte(`{"id":1}`))
+	f.Add([]byte(`{"find":{"href":"/orders{?id}","templated":true}}`), []byte(`{"id":1}`))
+	f.Add([]byte(`{"curies":[{"name":"acme","href":"https://example.com/{rel}"}]}`), []byte(`{"id":1}`))
+	f.Add([]byte(`{"curies":[{"name":"acme","href":"https://example.com/{rel}","templated":true}]}`), []byte(`{"id":1}`))
+	f.Add([]byte(`{"self":{"href":"/x"}}`), []byte(`{"a":1,"a":2}`))
+
+	f.Fuzz(func(t *testing.T, linksJSON, data []byte) {
+		inst := New(
+			WithStrictLinks(),
+			WithStrictRelations(),
+			WithStrictCuries(),
+			WithStrictJSON(),
+		)
+		env := inst.WrapPrecomputed(context.Background(), json.RawMessage(data), linksJSON)
+		out, err := json.Marshal(env)
+		if err != nil {
+			if len(out) != 0 {
+				t.Fatalf("error returned partial output: %s", out)
+			}
+			return
+		}
+		if len(out) == 0 {
+			t.Fatal("successful marshal returned empty output")
+		}
+		if !json.Valid(out) {
+			t.Fatalf("invalid JSON output: %s", out)
+		}
+		if !utf8.Valid(out) {
+			t.Fatalf("invalid UTF-8 output: %s", out)
 		}
 	})
 }

@@ -114,6 +114,46 @@ func TestEmbeddedOnlyPrefixIsSplicedIntoPrecomputedParent(t *testing.T) {
 	}
 }
 
+func TestEmbeddedOnlyPrefixSplicedIntoExistingPrecomputedCuries(t *testing.T) {
+	t.Parallel()
+
+	inst := New()
+	inst.RegisterCurie("acme", "https://docs.example/rels/{rel}")
+	handle, err := CompilePrecomputedLinks([]byte(`{
+		"curies":[{"name":"user","href":"https://user.example/{rel}","templated":true,"x-ext":"keep"}],
+		"self":{"href":"/x"}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := append([]byte(nil), handle.JSON...)
+
+	parent := inst.WrapPrecomputedLinks(&embeddedTestUser{ID: 1}, handle)
+	parent.AddEmbedded("acme:widget", &embeddedTestUser{ID: 2})
+
+	b, err := json.Marshal(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(handle.JSON, before) {
+		t.Fatalf("marshaling mutated the reusable handle: %s", handle.JSON)
+	}
+	if !bytes.Contains(b, []byte(`"x-ext":"keep"`)) {
+		t.Fatalf("existing declaration bytes were not preserved: %s", b)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	curies := relationObjects(t, root, "curies")
+	if len(curies) != 2 {
+		t.Fatalf("got %d curies, want 2: %#v", len(curies), curies)
+	}
+	if curies[0]["name"] != "user" || curies[1]["name"] != "acme" {
+		t.Fatalf("curies = %#v, want existing user then generated acme", curies)
+	}
+	if curies[0]["name"] == curies[1]["name"] {
+		t.Fatalf("duplicate declarations after splice: %#v", curies)
+	}
+}
+
 func TestEmbeddedAndLinkPrefixesAreDeclaredOnce(t *testing.T) {
 	t.Parallel()
 
