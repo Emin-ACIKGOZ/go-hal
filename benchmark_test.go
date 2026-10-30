@@ -123,14 +123,13 @@ func BenchmarkRaw_JSON_No_HAL(b *testing.B) {
 	}
 }
 
-// --- Benchmark: Reflection-based generator (simulate what users might do) ---
+// --- Benchmark: Generic generator path ---
 
-func BenchmarkReflection_Based_HAL(b *testing.B) {
+func BenchmarkGenericGenerator_HAL(b *testing.B) {
 	ctx := context.Background()
 	instance := New()
 
-	// Register using reflection (the old way that's slower).
-	instance.RegisterInstance(func(_ context.Context, t *TestData) []Link {
+	RegisterInstance(instance, func(_ context.Context, t *TestData) []Link {
 		return []Link{
 			{Rel: "self", Href: fmt.Sprintf("/users/%d", t.ID)},
 		}
