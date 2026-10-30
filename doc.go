@@ -4,13 +4,16 @@
 // Package hal implements the Hypertext Application Language (HAL) for JSON.
 //
 // It provides a mechanism to wrap existing Go structs in an envelope that
-// injects HAL "_links" without requiring changes to the underlying data
-// models. CollectionPage also emits the project-specific "_embedded.items"
-// convention; arbitrary embedded resources are not exposed.
+// injects HAL "_links" and "_embedded" fields without requiring changes to the
+// underlying data models. AddEmbedded supports arbitrary Resource Objects and
+// the §8.4 cache pattern; CollectionPage also emits the project-specific
+// "_embedded.items" convention.
 //
 // The package relies on a central or instance-based registry to map Go types
 // to link generation functions. It supports CURIEs (Compact URIs), reusable
-// precomputed links, and strict-mode checks on the generated path.
+// precomputed links, stable link shapes, media-type helpers, and independent
+// opt-in strict policies for links, relations, CURIEs, and JSON. Client-side
+// navigation is deferred to a planned separate halclient package.
 //
 // The target is the supported subset of draft-kelly-json-hal-11, an expired
 // Informational draft rather than an RFC. See COMPLIANCE.md for the support

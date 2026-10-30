@@ -3,8 +3,8 @@
 A HAL (Hypertext Application Language) serializer for Go. It wraps Go values in
 an envelope and injects `_links` during JSON marshaling, with typed link
 generators, reusable precomputed links, CURIEs, and an optional OpenAPI
-adapter. `CollectionPage` also emits a project-specific `_embedded.items`
-convention; arbitrary embedded resources are not exposed.
+adapter. `AddEmbedded` emits arbitrary embedded resources, and `CollectionPage`
+also emits a project-specific `_embedded.items` convention.
 
 The implementation targets the supported subset of
 `draft-kelly-json-hal-11` (an expired IETF Informational draft, not an RFC).
@@ -76,15 +76,14 @@ following `encoding/json` semantics.
 
 `go-hal` does not provide:
 
-* **Client-side Navigation** — this is a server-side serialization library.
+* **Client-side Navigation** — deferred to a planned separate `halclient`
+  package; this module is a server-side serializer.
 * **Code Generation** — no OpenAPI-to-Go or Go-to-OpenAPI generation.
 * **Router Integration** — URL construction and HTTP methods remain yours.
 * **Implicit Auto-Discovery** — links are generated only for registered types.
-* **`AddEmbedded` Helpers** — arbitrary embedded resources are not exposed.
-  `Collection` emits the project-specific `_embedded.items` convention below;
-  top-level `_embedded` in wrapped user data is rejected.
-* **Media-Type Negotiation** — choose and negotiate the media type in your
-  handlers.
+  No self or profile link is added automatically.
+* **Media-Type Negotiation** — `ContentType` formats a value; choosing and
+  negotiating the media type in handlers remains yours.
 
 ## Features
 
@@ -99,9 +98,42 @@ following `encoding/json` semantics.
   instances.
 * **CURIE Support** — registered prefixes and user declarations are merged with
   user-wins precedence; invalid or duplicate declarations are rejected.
+* **Embedded Resources** — `AddEmbedded` for raw objects, maps, slices, and
+  nested `*Envelope` values, with depth/cycle protection and the §8.4 cache
+  pattern via `AddCachedLink`.
 * **Defensive JSON Handling** — reserved HAL keys, escaped reserved keys,
   duplicate keys in precomputed input, invalid UTF-8, and non-object roots are
-  rejected before output is produced.
+  rejected before output is produced. `WithStrictJSON` extends duplicate-key
+  checks to marshaled state.
+* **Opt-in Strict Modes** — `WithStrictLinks`, `WithStrictRelations`,
+  `WithStrictCuries`, and `WithStrictJSON` are independent; defaults stay
+  permissive apart from the documented invalid-name/collision hardening.
+* **Media Helpers** — `MediaTypeHAL`, `MediaTypeVendorHAL`, and
+  `ContentType(profiles...)`.
+
+## Embedded Resources
+
+```go
+parent := inst.Wrap(ctx, &Book{Title: "The Way of Zen"})
+parent.AddEmbedded("author", &Person{Name: "Alan Watts"})
+parent.AddCachedLink(
+    hal.Link{Rel: "author", Href: "/people/alan-watts"},
+    &Person{Name: "Alan Watts"},
+)
+```
+
+An embedded value is a Resource Object. One value emits an object; repeated
+values emit an array. Slices flatten one level, one-element slices emit an
+object, and empty slices are a no-op. Raw structs, maps, and object
+`json.RawMessage` values are embedded as-is and are **not** auto-wrapped or
+link-generated; use `inst.Wrap` when the child needs its own links. Direct
+children must be `*Envelope` (not `Envelope` values) so depth and cycles can be
+bounded. The maximum embedded depth is 32; cycles return
+`ErrEmbeddedDepthExceeded`.
+
+Static and precomputed envelopes also accept `AddEmbedded`; the cached
+`_links` bytes are preserved and `_embedded` is spliced in. They still reject
+`AddLink` and `AddCachedLink` with `ErrAddLinkPrecomputed`.
 
 ## Strict Mode
 
@@ -120,6 +152,40 @@ checks:
 ```go
 hal.DefaultInstance = hal.New(hal.WithStrictMode())
 ```
+
+### Link, relation, CURIE, and JSON strictness
+
+These options are independent of `WithStrictMode` and of each other:
+
+* `WithStrictLinks()` validates href URI references and RFC 6570 templates,
+  enforces `templated` consistency, and validates `type`, `deprecation`,
+  `profile`, and `hreflang`.
+* `WithStrictRelations()` accepts lowercase registered tokens, absolute URI
+  schemes, and declared CURIEs; it rejects relative references, `:x`, and
+  mixed-case bare tokens. An undeclared `acme:widget` remains an opaque URI.
+* `WithStrictCuries()` requires ASCII NCName-subset names and a single
+  `{rel}`/`{+rel}` template with `templated: true`.
+* `WithStrictJSON()` scans the non-empty marshaled Data object for duplicate
+  keys and returns `ErrDuplicateJSONKey` / `*DuplicateKeyError`.
+
+```go
+inst := hal.New(
+    hal.WithStrictLinks(),
+    hal.WithStrictRelations(),
+    hal.WithStrictCuries(),
+    hal.WithStrictJSON(),
+)
+```
+
+`ValidateLink` performs the link checks for one-off validation. Strict
+link/relation/CURIE policy is applied to `AddLink`, generated links,
+`RegisterStatic`, `Collection`, and precomputed wrapping. Use
+`CompilePrecomputedLinksStrict` for reusable handles; strict instances reject
+non-strict handles and the zero handle remains valid.
+
+Default hardening still rejects blank/control/invalid-UTF-8 relation names,
+bare-token case collisions, and CURIE names containing a colon or control
+character.
 
 ## Collections
 
@@ -150,7 +216,9 @@ env := inst.WrapPrecomputedLinks(user, compiled)
 ```
 
 `CompilePrecomputedLinks` owns its bytes: mutating the input slice afterward does
-not affect the handle. A nil handle has `WrapRaw` semantics, while a non-nil zero
+not affect the handle. `CompilePrecomputedLinksStrict` additionally validates
+strict links and CURIEs. A strict instance rejects a non-empty handle compiled
+without the matching strict flags; an empty (zero) handle is always valid. A nil handle has `WrapRaw` semantics, while a non-nil zero
 handle means an empty link set. A hand-built handle whose JSON was never
 validated is rejected at marshal time. Static and precomputed envelopes reject
 `AddLink` with `ErrAddLinkPrecomputed`; use a generated or raw envelope if you
@@ -176,9 +244,15 @@ declarations with the same name. Duplicate names within one source return
 `ErrInvalidCurie`. `RegisterCurie` panics immediately for an empty/whitespace
 prefix or an empty href.
 
-Generated declarations set `templated: true`. User declarations are not required
-to set it, and `href` template syntax is not validated (see
-[RFC 6570](https://www.rfc-editor.org/rfc/rfc6570); validation is out of scope).
+Generated declarations derive `templated` from the registered href template, so
+a declaration never claims `templated: true` for a non-template. Default mode
+does not require user declarations to set it and does not validate href
+templates. `WithStrictCuries()` requires a single `{rel}` or `{+rel}` expression
+and `templated: true`.
+
+Embedded `*Envelope` children inherit parent CURIE declarations. A child-local
+declaration overrides the parent for that child and its descendants; children do
+not emit redundant declarations for inherited prefixes.
 
 ## OpenAPI Adapter (`hal/openapi`)
 
@@ -332,12 +406,16 @@ publishes an advisory `benchstat` comparison; it does not fail builds.
 3. Precomputed link input is scanned for duplicate JSON keys. Arbitrary user
    state is not re-scanned for duplicate keys after the encoder produces it;
    use a strict encoder if that matters.
-4. `href` is required on Link Objects. URI syntax, RFC 6570 templates, and link
-   relation registries are not validated.
-5. Static and precomputed envelopes are immutable. `AddLink` on them records a
-   deferred `ErrAddLinkPrecomputed`, returned by marshaling. An empty relation
-   is also recorded as a deferred error.
-6. `Instance` registration is concurrency-safe. An `Envelope` may be marshaled
+4. `href` is required on Link Objects. By default URI syntax, RFC 6570
+   templates, and relation registries are not validated; enable
+   `WithStrictLinks`/`WithStrictRelations` or call `ValidateLink`.
+5. Static and precomputed envelopes are immutable for links. `AddLink` and
+   `AddCachedLink` record a deferred `ErrAddLinkPrecomputed`; `AddEmbedded` is
+   allowed and spliced into the output. Invalid relations are deferred as
+   `ErrInvalidRelation`.
+6. Embedded envelopes are limited to depth 32 and checked for cycles on each
+   marshal. Raw embedded graphs are caller-owned.
+7. `Instance` registration is concurrency-safe. An `Envelope` may be marshaled
    concurrently only if it is not mutated.
 
 ## License

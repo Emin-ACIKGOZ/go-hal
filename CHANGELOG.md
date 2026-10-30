@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `(*Envelope).AddEmbedded` for arbitrary embedded Resource Objects, with
+  object/array multiplicity, one-level slice flattening, static/precomputed
+  splicing, depth-32 and cycle protection, and nested `*Envelope` support.
+- `(*Envelope).AddCachedLink` for the draft §8.4 hypertext cache pattern.
+- `ValidateLink`, `WithStrictLinks`, `WithStrictRelations`, and
+  `WithStrictCuries` for opt-in link, relation, and CURIE validation.
+- `WithStrictJSON`, `ErrDuplicateJSONKey`, and `DuplicateKeyError{Key, Offset}`
+  for opt-in duplicate-key scanning of marshaled state.
+- `LinkShape` (`ShapeAuto`, `ShapeArray`, `ShapeObject`), `WithLinkShape`, and
+  `WithRelationShape` for stable object/array relation shapes.
+- `CompilePrecomputedLinksStrict` for reusable handles that strict instances
+  accept.
+- `MediaTypeHAL`, `MediaTypeVendorHAL`, and `ContentType(profiles...)`.
+- `ErrInvalidEmbedded`, `ErrEmbeddedDepthExceeded`, `ErrInvalidLink`,
+  `ErrInvalidRelation`, and `ErrLinkShape`.
+- Embedded CURIE scope with parent fallback and child-local override.
+
+### Changed
+
+- Relationship hardening now rejects blank/control/non-UTF-8 relations,
+  bare-token case collisions, and CURIE names containing a colon or control
+  character. Default link output is otherwise unchanged.
+- Generated CURIE declarations derive `templated` from the href template.
+- Docs describe the full server-side draft-11 scope and defer client support to
+  a planned separate `halclient` package.
+
+
 ## [1.2.0] - 2026-10-30
 
 ### Changed
