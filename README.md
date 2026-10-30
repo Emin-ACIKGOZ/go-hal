@@ -265,6 +265,33 @@ Embedded `*Envelope` children inherit parent CURIE declarations. A child-local
 declaration overrides the parent for that child and its descendants; children do
 not emit redundant declarations for inherited prefixes.
 
+## Self and profile links
+
+Draft §8.1 recommends a `self` link on each Resource Object, and §7.1 recommends
+a root `profile` link when the media type carries a `profile` parameter. Both are
+authored explicitly; the serializer never injects or mutates links during
+marshaling. `Collection` already emits its own `self` link and never adds a
+`profile`.
+
+```go
+profiles := []string{"https://example.com/profiles/order"}
+ct, err := hal.ContentType(profiles...)
+if err != nil {
+	return err
+}
+
+env := inst.Wrap(ctx, order)
+env.AddLink(hal.Link{Rel: "self", Href: "/orders/523"}) // relative self is fine
+for _, profile := range profiles {
+	env.AddLink(hal.Link{Rel: "profile", Href: profile}) // absolute profile URIs
+}
+_ = ct // serve as the response Content-Type
+```
+
+`self` applies to every Resource Object, including embedded ones. The root
+`profile` link applies to the document root; embedded resources do not inherit
+it. A manually built `CollectionPage` sets its own root profile in `Links`.
+
 ## OpenAPI Adapter (`hal/openapi`)
 
 The optional adapter augments OpenAPI 3.0 schemas using `kin-openapi`.

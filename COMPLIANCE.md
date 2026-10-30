@@ -284,8 +284,31 @@ The vendor type `application/vnd.hal+json` has no optional parameters in its IAN
 registration, so the `profile` parameter belongs to `application/hal+json` only;
 `ContentType` never emits the vendor type.
 
-The serializer never adds a `self` or `profile` link automatically. Add them
-explicitly when required by draft §8.1 or §7.1.
+The serializer never adds a `self` or `profile` link automatically, and it never
+mutates an envelope during marshaling. Add them explicitly when required by draft
+§8.1 or §7.1:
+
+```go
+profiles := []string{"https://example.com/profiles/order"}
+ct, err := hal.ContentType(profiles...)
+if err != nil {
+	return err
+}
+
+env := inst.Wrap(ctx, order)
+env.AddLink(hal.Link{Rel: "self", Href: "/orders/523"})
+for _, profile := range profiles {
+	env.AddLink(hal.Link{Rel: "profile", Href: profile})
+}
+_ = ct
+```
+
+`self` applies to every Resource Object, including embedded envelopes. The root
+`profile` link applies to the document root only; embedded resources do not
+inherit it. `Collection` emits `self` and never adds `profile`; a manually built
+`CollectionPage` sets its root profile in `Links`. Static and precomputed
+envelopes gain no links unless the caller supplied them at registration or
+compile time.
 
 ## Collections
 
