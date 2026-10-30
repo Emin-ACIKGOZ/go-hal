@@ -57,7 +57,20 @@ func (e *Envelope) AddEmbedded(rel string, value any) {
 	if e.embedded == nil {
 		e.embedded = make(map[string]any, defaultLinksCapacity)
 	}
-	appendRelationValue(e.embedded, rel, normalized)
+	appendEmbeddedValue(e.embedded, rel, normalized)
+}
+
+// appendEmbeddedValue appends one normalized embedded value. A normalized
+// multi-element slice represents several resources, so each element is added
+// through the HAL multiplicity helper instead of being nested as a JSON array.
+func appendEmbeddedValue(values map[string]any, rel string, normalized any) {
+	if items, ok := normalized.([]any); ok {
+		for _, item := range items {
+			appendRelationValue(values, rel, item)
+		}
+		return
+	}
+	appendRelationValue(values, rel, normalized)
 }
 
 //nolint:cyclop // Type normalization is a deliberate flat switch.
@@ -256,5 +269,5 @@ func (e *Envelope) AddCachedLink(link Link, resource any) {
 	if e.embedded == nil {
 		e.embedded = make(map[string]any, defaultLinksCapacity)
 	}
-	appendRelationValue(e.embedded, link.Rel, normalized)
+	appendEmbeddedValue(e.embedded, link.Rel, normalized)
 }
