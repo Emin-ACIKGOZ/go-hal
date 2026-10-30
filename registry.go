@@ -781,45 +781,120 @@ func (i *Instance) resolvePrecomputedLinks(links *PrecomputedLinks) ([]byte, err
 	if len(declarations) == 0 {
 		return links.JSON, nil
 	}
-	return mergePrecomputedCuries(links.JSON, declarations)
+	return mergePrecomputedCuries(links.JSON, links.curies, declarations)
 }
 
-func mergePrecomputedCuries(linksJSON []byte, registered []Link) ([]byte, error) {
-	var document map[string]stdjson.RawMessage
-	if err := stdjson.Unmarshal(linksJSON, &document); err != nil {
+// mergePrecomputedCuries adds registered declarations to a cached wrapped link
+// document. It byte-splices only the curies member so all other cached bytes,
+// unknown fields, and user declarations are preserved.
+func mergePrecomputedCuries(linksJSON []byte, user, registered []Link) ([]byte, error) {
+	linksStart, linksEnd, rawLinks, ok, err := jsonMemberSpan(linksJSON, fieldLinks)
+	if err != nil {
 		return nil, fmt.Errorf("hal: precomputed links must be a JSON object: %w", err)
 	}
-	var links map[string]stdjson.RawMessage
-	if err := stdjson.Unmarshal(document[fieldLinks], &links); err != nil || links == nil {
+	if !ok {
 		return nil, errors.New("hal: precomputed _links must be a JSON object")
 	}
+	mergedLinks, err := mergeCuriesMember(rawLinks, user, registered)
+	if err != nil {
+		return nil, err
+	}
+	return spliceJSONSpan(linksJSON, linksStart, linksEnd, mergedLinks), nil
+}
 
-	var userRaw []stdjson.RawMessage
-	var user []Link
-	if raw, ok := links[relCuries]; ok {
-		var err error
-		userRaw, user, err = decodePrecomputedCurieRaw(raw, false, false)
-		if err != nil {
+//nolint:cyclop // Explicit found/insert branches keep byte splices auditable.
+func mergeCuriesMember(rawLinks []byte, user, registered []Link) ([]byte, error) {
+	start, end, rawCuries, found, err := jsonMemberSpan(rawLinks, relCuries)
+	if err != nil {
+		return nil, fmt.Errorf("hal: precomputed _links must be a JSON object: %w", err)
+	}
+	if found {
+		var userRaw []stdjson.RawMessage
+		if err := stdjson.Unmarshal(rawCuries, &userRaw); err != nil {
 			return nil, fmt.Errorf("hal: precomputed curies: %w", err)
 		}
+		if user == nil {
+			var err error
+			_, user, err = decodePrecomputedCurieRaw(rawCuries, false, false)
+			if err != nil {
+				return nil, fmt.Errorf("hal: precomputed curies: %w", err)
+			}
+		}
+		merged, err := appendMissingCuries(userRaw, user, registered)
+		if err != nil {
+			return nil, err
+		}
+		encoded, err := json.Marshal(merged)
+		if err != nil {
+			return nil, err
+		}
+		return spliceJSONSpan(rawLinks, start, end, encoded), nil
 	}
 
-	merged, err := appendMissingCuries(userRaw, user, registered)
+	encoded, err := json.Marshal(registered)
 	if err != nil {
 		return nil, err
 	}
-	encoded, err := json.Marshal(merged)
-	if err != nil {
-		return nil, err
+	closeIdx := bytes.LastIndexByte(rawLinks, '}')
+	if closeIdx < 0 {
+		return nil, errors.New("hal: precomputed _links must be a JSON object")
 	}
-	links[relCuries] = encoded
+	body := rawLinks[:closeIdx]
+	prefix := `,"` + relCuries + `":`
+	if isEmptyJSONObject(rawLinks) {
+		prefix = `"` + relCuries + `":`
+	}
+	out := make([]byte, 0, len(rawLinks)+len(encoded)+len(prefix))
+	out = append(out, body...)
+	out = append(out, prefix...)
+	out = append(out, encoded...)
+	out = append(out, rawLinks[closeIdx:]...)
+	return out, nil
+}
 
-	encodedLinks, err := json.Marshal(links)
+// jsonMemberSpan finds an object member value and returns its zero-based byte
+// span and raw bytes. It is used to splice one member without re-encoding the
+// rest of a cached JSON object.
+func jsonMemberSpan(data []byte, key string) (start, end int, raw []byte, found bool, err error) {
+	dec := newJSONTokenScanner(data)
+	tok, err := dec.Token()
 	if err != nil {
-		return nil, err
+		return 0, 0, nil, false, err
 	}
-	document[fieldLinks] = encodedLinks
-	return json.Marshal(document)
+	if delim, ok := tok.(stdjson.Delim); !ok || delim != '{' {
+		return 0, 0, nil, false, errors.New("not an object")
+	}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return 0, 0, nil, false, err
+		}
+		name, ok := tok.(string)
+		if !ok {
+			return 0, 0, nil, false, errors.New("object key is not a string")
+		}
+		var value stdjson.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return 0, 0, nil, false, err
+		}
+		valueEnd := int(dec.InputOffset())
+		valueStart := valueEnd - len(value)
+		if name == key {
+			return valueStart, valueEnd, value, true, nil
+		}
+	}
+	return 0, 0, nil, false, nil
+}
+
+func spliceJSONSpan(data []byte, start, end int, replacement []byte) []byte {
+	if start < 0 || end < start || end > len(data) {
+		return data
+	}
+	out := make([]byte, 0, len(data)-(end-start)+len(replacement))
+	out = append(out, data[:start]...)
+	out = append(out, replacement...)
+	out = append(out, data[end:]...)
+	return out
 }
 
 func appendMissingCuries(userRaw []stdjson.RawMessage, user, registered []Link) ([]stdjson.RawMessage, error) {
