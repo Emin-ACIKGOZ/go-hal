@@ -6,12 +6,57 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-30
+
+### Added
+
+- Automatic `templated: true` derivation for RFC 6570 template hrefs on dynamic
+  `AddLink`/`AddCachedLink` calls, static links, `Collection` self links, and
+  struct-supplied `curies` declarations. `%7B`/`%7D` remain data, and
+  malformed or reserved-operator templates are not advertised as templates.
+- Generated `curies` declarations for registered relation prefixes that appear
+  only in `_embedded` keys, including byte-splicing into precomputed parents
+  that already carry a `curies` array.
+- `ErrInvalidProfile` and absolute URI validation for `ContentType` profiles via
+  the shared internal `uriref.ValidateAbsolute` helper.
+- Strict `Link.Profile` validation now requires an absolute URI.
+- Strict relation validation honors resource-local and inherited CURIE
+  declarations, including declarations added after their first use and
+  declarations inherited from a precomputed parent.
+- Document-wide `WithStrictJSON`: a strict parent policy is inherited by
+  embedded child envelopes transitively and raw embedded resources are scanned
+  for duplicate keys at any depth.
+
 ### Changed
 
+- Relation validation now uses a shared collision index; default relation
+  grammar, case-variant collision behavior, and link-shape defaults are
+  unchanged.
+- `ContentType` now rejects profiles that are not absolute URIs, wrapping
+  `ErrInvalidProfile` and `uriref.ErrInvalidURIReference`.
 - Document client-side navigation as out of scope for this server-side module
   instead of promising a future `halclient` package. Draft-11 has no
   client-side MUST; §8.4 makes cache-pattern support OPTIONAL and §5.4 applies
   to clients that traverse a deprecated link.
+
+### Fixed
+
+- Precomputed parent `curies` declarations are preserved when embedded-only
+  prefixes are spliced in; only the `curies` member is rewritten.
+- Strict CURIE decoding and strict link compilation continue to reject
+  precomputed template declarations that omit `templated: true`, while
+  struct-supplied declarations derive it during normalization.
+
+### Migration
+
+Default output now gains `templated: true` on template links (dynamic, static,
+Collection, and struct-supplied curies) and generated `curies` declarations for
+embedded-only registered prefixes. `ContentType` now rejects non-absolute
+profiles. Strict link validation accepts underived template structs because
+normalization supplies the flag, but precomputed JSON still requires an explicit
+`templated: true`. Strict relations now honor resource-local and inherited CURIE
+declarations, and strict JSON applies document-wide. Default relation grammar,
+default case-variant collision behavior, and link-shape defaults are unchanged.
 
 ## [1.3.0] - 2026-10-30
 
