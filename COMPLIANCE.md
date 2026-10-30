@@ -178,9 +178,12 @@ the ASCII NCName subset `[A-Za-z_][A-Za-z0-9._-]*`.
 
 Strict declarations require exactly one expression using `{rel}` or `{+rel}`,
 no prefix or explode modifier, valid literal syntax, and `templated: true`.
-A template without `templated: true`, a non-template with `templated: true`, or
-`%7Brel%7D` (data) is rejected with `ErrInvalidCurie`. Generated declarations
-derive `templated` from the registered href template so they never claim
+Struct-supplied declarations (`AddLink` and `RegisterStatic`) are normalized
+before validation, so a template href derives `templated: true` and is accepted.
+Only precomputed declarations require the explicit flag; there, a template
+without `templated: true`, a non-template with `templated: true`, or `%7Brel%7D`
+(data) is rejected with `ErrInvalidCurie`. Generated declarations derive
+`templated` from the registered href template so they never claim
 `templated: true` for a literal.
 
 Full draft §8.3 CURIE conformance requires `WithStrictCuries`: default mode keeps
@@ -227,10 +230,12 @@ deliberate `_embedded` splicing and a byte-splice of only the `curies` member
 when registered declarations are added; all other cached bytes and unknown
 fields remain untouched.
 
-Precomputed links are never rewritten. A template href without
-`templated: true` is emitted verbatim in default mode. Strict link compilation
-and strict instances reject it with `ErrInvalidLink` ("precomputed template href
-requires templated true"), and strict CURIE decoding reports `ErrInvalidCurie`.
+Precomputed link objects and all other cached bytes are preserved; the only
+cached rewrite is the deliberate `curies` member splice described above. A
+template href without `templated: true` is emitted verbatim in default mode.
+Strict link compilation and strict instances reject it with `ErrInvalidLink`
+("precomputed template href requires templated true"), and strict CURIE decoding
+reports `ErrInvalidCurie`.
 This keeps the byte-preservation contract while failing closed under opt-in
 strictness. Struct-supplied links are normalized at add/registration time, so
 static templates are accepted and emitted with the derived flag.
@@ -261,9 +266,12 @@ generated, raw, static, precomputed, and compiled envelope paths, and the policy
 is inherited by embedded child envelopes transitively (the effective policy is
 parent OR child). A strict parent therefore covers a permissive child, while a
 strict child stays strict under a permissive parent. It does not rescan final
-output, precomputed links (those are scanned at compile time), or a child's
-already-scanned output. Default marshaling stays permissive apart from
-precomputed input scanning.
+output, precomputed links (those are scanned at compile time), or a normal
+`_embedded` child's already-scanned output. A `*Envelope` hidden inside a raw
+map or struct is the exception: it self-scans when marshaled and its resulting
+bytes are also scanned as a raw embedded resource. Normal `_embedded` children
+are not rescanned. Default marshaling stays permissive apart from precomputed
+input scanning.
 
 RFC 8259 §4 makes unique names a SHOULD, not a HAL MUST: duplicate names are
 valid JSON but non-interoperable, so this is opt-in hardening. Errors are

@@ -175,7 +175,9 @@ These options are independent of `WithStrictMode` and of each other:
   Enforcing the full grammar and case-variant collisions by default is reserved
   for v2.0.0.
 * `WithStrictCuries()` requires ASCII NCName-subset names and a single
-  `{rel}`/`{+rel}` template with `templated: true`.
+  `{rel}`/`{+rel}` template with `templated: true`. Struct-supplied
+  declarations are normalized first, so a template derives the flag; only
+  precomputed declarations require it explicitly.
 * `WithStrictJSON()` scans each non-empty marshaled Data object and raw embedded
   resource, inherits the policy into child envelopes, and returns
   `ErrDuplicateJSONKey` / `*DuplicateKeyError`.
@@ -316,9 +318,10 @@ skip the one-time parse; that is the fast path.
 
 `href: ""` is a valid RFC 3986 same-document reference and stays accepted by
 default. Strict link validation rejects empty and whitespace-only hrefs as
-authoring bugs. Precomputed JSON is never rewritten: a template without
-`templated: true` is emitted verbatim by default and rejected by strict link or
-CURIE validation.
+authoring bugs. Precomputed link objects and other cached bytes are preserved;
+only the `curies` member may be spliced to add generated embedded-only
+declarations. A template without `templated: true` is emitted verbatim by
+default and rejected by strict link or CURIE validation.
 
 ## OpenAPI Adapter (`hal/openapi`)
 
