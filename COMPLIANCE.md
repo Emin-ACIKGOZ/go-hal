@@ -18,6 +18,7 @@ writing.
 - HAL resource objects allow the reserved `_links` and `_embedded` properties
   (draft §4.1). Link objects and their optional fields are defined in draft §5.
   HAL CURIEs are defined in draft §8.3.
+- This module requires Go 1.26 or newer; only supported Go releases are tested.
 - `CollectionPage`, `count`, `total`, and `_embedded.items` are **project
   conventions**, not HAL specification requirements.
 

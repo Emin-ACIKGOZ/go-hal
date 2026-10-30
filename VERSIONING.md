@@ -70,8 +70,8 @@ The CI pipeline (`/.github/workflows/ci.yml`) runs these gates:
 
 ### 1. Tests on Supported Toolchains
 
-The test matrix uses Go `1.22.5` (the repository minimum), `1.24.11`, and
-`stable` with `GOTOOLCHAIN=local`. Each job runs:
+The test matrix uses Go `1.26.x` (the repository minimum) and `1.27.x` with
+`GOTOOLCHAIN=local`. Each job runs:
 
 - `go vet ./...`
 - `go test -count=1 -shuffle=on ./...`

@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Minimum Go version is now **1.26**. Go 1.22, 1.24, and 1.25 are end-of-life
+  and are no longer tested.
+- Upgraded `github.com/goccy/go-json` to v0.12.0.
+- Upgraded `github.com/getkin/kin-openapi` to v0.152.0 and refreshed the
+  security-relevant transitive modules, including `golang.org/x/text` to
+  v0.43.0.
+- `govulncheck` reports no known vulnerabilities in the final module graph.
+
 ## [1.1.0] - 2026-10-30
 
 ### Added

@@ -13,6 +13,11 @@ support matrix, validation boundaries, and the list of features that are out of
 scope. In particular, `application/hal+json` is not an IANA-registered media
 type; the registered vendor type is `application/vnd.hal+json`.
 
+## Requirements
+
+Go **1.26** or newer. Go 1.22, 1.24, and 1.25 are end-of-life and are no longer
+tested. The previous v1.1.0 release remains available for older toolchains.
+
 ## Minimal Example
 
 ```go

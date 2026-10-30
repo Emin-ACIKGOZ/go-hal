@@ -12,7 +12,7 @@ Contributions may include bug fixes, performance improvements, documentation upd
 
 ## Code Standards
 
-- Go version must match `go.mod`
+- Go 1.26 or newer (see `go.mod` and the CI matrix)
 - Code must be formatted with `gofmt`
 - `go vet` must pass
 - `golangci-lint` must pass using the repository’s `.golangci.yml`
