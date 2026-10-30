@@ -128,3 +128,85 @@ func TestPrecomputed_RejectsRelationCollisions(t *testing.T) {
 		t.Fatalf("case-sensitive CURIE relations rejected: %v", err)
 	}
 }
+
+func TestAddLink_RelativeReferencesDoNotCollide(t *testing.T) {
+	t.Parallel()
+
+	env := New().WrapRaw(&embeddedTestUser{ID: 1})
+	relations := []string{"a/b", "A/B", "?query", "?QUERY", "#frag", "#FRAG"}
+	for _, rel := range relations {
+		env.AddLink(Link{Rel: rel, Href: "/x"})
+	}
+
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("relative reference collision: %v", err)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	links := root["_links"].(map[string]any)
+	for _, rel := range relations {
+		if _, exists := links[rel]; !exists {
+			t.Fatalf("relation %q missing from %v", rel, links)
+		}
+	}
+}
+
+func TestPrecomputed_RelativeReferencesDoNotCollide(t *testing.T) {
+	t.Parallel()
+
+	links := []byte(`{
+		"a/b":{"href":"/a"},
+		"A/B":{"href":"/b"},
+		"?query":{"href":"/q"},
+		"?QUERY":{"href":"/Q"},
+		"#frag":{"href":"/f"},
+		"#FRAG":{"href":"/F"}
+	}`)
+	handle, err := CompilePrecomputedLinks(links)
+	if err != nil {
+		t.Fatalf("relative reference collision: %v", err)
+	}
+	b, err := json.Marshal(New().WrapPrecomputedLinks(&embeddedTestUser{ID: 1}, handle))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !json.Valid(b) {
+		t.Fatalf("invalid JSON: %s", b)
+	}
+}
+
+func TestAddEmbedded_RelativeReferencesDoNotCollide(t *testing.T) {
+	t.Parallel()
+
+	env := New().WrapRaw(&embeddedTestUser{ID: 1})
+	env.AddEmbedded("a/b", &embeddedTestUser{ID: 1})
+	env.AddEmbedded("A/B", &embeddedTestUser{ID: 2})
+	env.AddEmbedded("?query", &embeddedTestUser{ID: 3})
+	env.AddEmbedded("?QUERY", &embeddedTestUser{ID: 4})
+	env.AddEmbedded("#frag", &embeddedTestUser{ID: 5})
+	env.AddEmbedded("#FRAG", &embeddedTestUser{ID: 6})
+
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("relative reference collision: %v", err)
+	}
+	root := decodeJSONValue(t, b).(map[string]any)
+	embedded := root["_embedded"].(map[string]any)
+	for _, rel := range []string{"a/b", "A/B", "?query", "?QUERY", "#frag", "#FRAG"} {
+		if _, exists := embedded[rel]; !exists {
+			t.Fatalf("embedded relation %q missing from %v", rel, embedded)
+		}
+	}
+}
+
+func TestAddLink_BareTokenCollisionStillRejected(t *testing.T) {
+	t.Parallel()
+
+	env := New().WrapRaw(&embeddedTestUser{ID: 1})
+	env.AddLink(Link{Rel: "self", Href: "/a"})
+	env.AddLink(Link{Rel: "Self", Href: "/b"})
+
+	if _, err := json.Marshal(env); !errors.Is(err, ErrInvalidRelation) {
+		t.Fatalf("error = %v, want ErrInvalidRelation", err)
+	}
+}

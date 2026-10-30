@@ -36,19 +36,31 @@ func validateRelationName(rel string, existing map[string]any) error {
 	if err := validateRelationSyntax(rel); err != nil {
 		return err
 	}
-	if relation.Classify(rel) != relation.Token {
+	folded, isBare := collisionToken(rel)
+	if !isBare {
 		return nil
 	}
-	folded := relation.FoldToken(rel)
 	for name := range existing {
-		if name == rel || relation.Classify(name) != relation.Token {
+		if name == rel {
 			continue
 		}
-		if relation.FoldToken(name) == folded {
+		if other, ok := collisionToken(name); ok && other == folded {
 			return fmt.Errorf("%w: bare token %q collides with %q", ErrInvalidRelation, rel, name)
 		}
 	}
 	return nil
+}
+
+// collisionToken returns the folded key only for names with actual bare-token
+// syntax. Relative references such as "a/b", "?query", and "#frag" are lexical
+// tokens for relation classification but are not registered bare tokens and
+// must not case-fold into collisions.
+func collisionToken(rel string) (string, bool) {
+	folded := relation.FoldToken(rel)
+	if !relation.IsToken(folded) {
+		return "", false
+	}
+	return folded, true
 }
 
 func validateRelationSyntax(rel string) error {
@@ -100,10 +112,10 @@ func (i *Instance) hasCuriePrefix(prefix string) bool {
 func validateRelationCollisions(names []string) error {
 	seen := make(map[string]string, len(names))
 	for _, name := range names {
-		if relation.Classify(name) != relation.Token {
+		folded, ok := collisionToken(name)
+		if !ok {
 			continue
 		}
-		folded := relation.FoldToken(name)
 		if previous, exists := seen[folded]; exists && previous != name {
 			return fmt.Errorf("%w: bare token %q collides with %q", ErrInvalidRelation, name, previous)
 		}
