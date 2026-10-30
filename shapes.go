@@ -99,16 +99,3 @@ func (i *Instance) shapeFor(rel string) LinkShape {
 	}
 	return i.linkShape
 }
-
-func applyStaticLinkShapes(links map[string]any, inst *Instance) error {
-	for rel, value := range links {
-		next, changed, err := applyLinkShape(rel, value, inst.shapeFor(rel))
-		if err != nil {
-			return err
-		}
-		if changed {
-			links[rel] = next
-		}
-	}
-	return nil
-}

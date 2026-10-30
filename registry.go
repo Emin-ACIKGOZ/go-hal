@@ -239,9 +239,11 @@ func compileStaticLinks(links []Link, inst *Instance) *PrecomputedLinks {
 	}
 	normalizeStaticCuries(linksMap)
 	if inst != nil {
-		if err := applyStaticLinkShapes(linksMap, inst); err != nil {
+		shaped, err := applyLinkShapes(linksMap, inst.shapeFor)
+		if err != nil {
 			panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
 		}
+		linksMap = shaped
 	}
 
 	pre := &PrecomputedLinks{
