@@ -156,6 +156,10 @@ A template without `templated: true`, a non-template with `templated: true`, or
 derive `templated` from the registered href template so they never claim
 `templated: true` for a literal.
 
+Full draft §8.3 CURIE conformance requires `WithStrictCuries`: default mode keeps
+accepting non-template declarations (and emits them unchanged) for backward
+compatibility. This is an opt-in policy, not a default rejection.
+
 Duplicate names in one source return `ErrDuplicateCurie`. User declarations win
 over registered declarations. `RegisterCurie` derives `templated` and panics on
 invalid names, empty hrefs, or strict href/templated violations;
