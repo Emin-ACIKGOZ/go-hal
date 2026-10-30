@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // ErrDuplicateCurie is returned when CURIE declarations in one source reuse a
@@ -71,12 +72,30 @@ func anyRelationPrefixes(links map[string]any) []string {
 	return sortedPrefixSet(set)
 }
 
+func validateCurieName(name string) error {
+	if name == "" {
+		return fmt.Errorf("%w: name must be non-empty", ErrInvalidCurie)
+	}
+	if !utf8.ValidString(name) {
+		return fmt.Errorf("%w: name %q must be valid UTF-8", ErrInvalidCurie, name)
+	}
+	if strings.ContainsRune(name, ':') {
+		return fmt.Errorf("%w: name %q must not contain a colon", ErrInvalidCurie, name)
+	}
+	if strings.IndexFunc(name, func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.IsControl(r)
+	}) >= 0 {
+		return fmt.Errorf("%w: name %q must contain no whitespace or control characters", ErrInvalidCurie, name)
+	}
+	return nil
+}
+
 func validateCurieDeclarations(declarations []Link) error {
 	seen := make(map[string]struct{}, len(declarations))
 	for _, declaration := range declarations {
 		name := declaration.Name
-		if name == "" || strings.IndexFunc(name, unicode.IsSpace) >= 0 {
-			return fmt.Errorf("%w: name %q must be non-empty and contain no whitespace", ErrInvalidCurie, name)
+		if err := validateCurieName(name); err != nil {
+			return err
 		}
 		if strings.TrimSpace(declaration.Href) == "" {
 			return fmt.Errorf("%w: %q must have a non-empty href", ErrInvalidCurie, name)
