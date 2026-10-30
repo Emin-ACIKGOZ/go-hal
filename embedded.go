@@ -219,3 +219,42 @@ func marshalEnvelopeChild(child *Envelope, depth int, ancestors map[*Envelope]st
 	defer delete(ancestors, child)
 	return child.marshalEnvelope(depth, ancestors, scope)
 }
+
+// AddCachedLink adds a link and embeds the same relation's resource, the HAL
+// hypertext cache pattern from draft §8.4. The operation is atomic: if the
+// relation or resource is invalid, neither the link nor the embedded value is
+// added. On static or precomputed envelopes it records the deferred
+// ErrAddLinkPrecomputed and adds nothing.
+func (e *Envelope) AddCachedLink(link Link, resource any) {
+	if e.premanaged {
+		if e.err == nil {
+			e.err = ErrAddLinkPrecomputed
+		}
+		return
+	}
+	if e.err != nil {
+		return
+	}
+	if err := validateRelationName(link.Rel, e.links); err != nil {
+		e.err = err
+		return
+	}
+	if err := validateRelationName(link.Rel, e.embedded); err != nil {
+		e.err = err
+		return
+	}
+	normalized, ok, err := normalizeEmbeddedValue(resource)
+	if err != nil {
+		e.err = err
+		return
+	}
+
+	e.addLinkRaw(link.Rel, link)
+	if !ok {
+		return
+	}
+	if e.embedded == nil {
+		e.embedded = make(map[string]any, defaultLinksCapacity)
+	}
+	appendRelationValue(e.embedded, link.Rel, normalized)
+}
