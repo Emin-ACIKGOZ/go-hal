@@ -4,6 +4,7 @@
 package hal
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -39,7 +40,7 @@ func TestEncoderMatrix_CustomMarshalers(t *testing.T) {
 	links := `{"_links":{"self":{"href":"/x"}}}`
 	tests := []struct {
 		name      string
-		data      customMarshaler
+		data      any
 		want      []byte
 		wantErr   bool
 		wantErrIs error
@@ -65,6 +66,16 @@ func TestEncoderMatrix_CustomMarshalers(t *testing.T) {
 			want: []byte(links),
 		},
 		{
+			name: "nil interface",
+			data: nil,
+			want: []byte(links),
+		},
+		{
+			name: "typed nil marshaler",
+			data: (*customMarshaler)(nil),
+			want: []byte(links),
+		},
+		{
 			name:    "array",
 			data:    customMarshaler{payload: `[1,2]`},
 			wantErr: true,
@@ -85,6 +96,17 @@ func TestEncoderMatrix_CustomMarshalers(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "invalid UTF-8",
+			data:    customMarshaler{payload: "{\"id\":\"\xff\"}"},
+			wantErr: true,
+		},
+		{
+			name:      "reserved field conflict",
+			data:      customMarshaler{payload: `{"id":1,"_links":{}}`},
+			wantErr:   true,
+			wantErrIs: ErrHALFieldConflict,
+		},
+		{
 			name:      "marshaler error",
 			data:      customMarshaler{err: errCustomMarshal},
 			wantErr:   true,
@@ -92,34 +114,123 @@ func TestEncoderMatrix_CustomMarshalers(t *testing.T) {
 		},
 	}
 
-	for _, enc := range encoders {
-		t.Run(enc.name, func(t *testing.T) {
-			for _, tc := range tests {
-				t.Run(tc.name, func(t *testing.T) {
-					env := New().WrapRaw(tc.data)
-					env.AddLink(Link{Rel: "self", Href: "/x"})
+	wrappers := []struct {
+		name string
+		wrap func(any) *Envelope
+	}{
+		{
+			name: "generated",
+			wrap: func(data any) *Envelope {
+				env := New().WrapRaw(data)
+				env.AddLink(Link{Rel: "self", Href: "/x"})
+				return env
+			},
+		},
+		{
+			name: "precomputed",
+			wrap: func(data any) *Envelope {
+				return New().WrapPrecomputed(context.Background(), data, []byte(`{"self":{"href":"/x"}}`))
+			},
+		},
+	}
 
-					b, err := enc.marshal(env)
-					if tc.wantErr {
-						if err == nil {
-							t.Fatalf("expected error, got %s", b)
-						}
-						if len(b) != 0 {
-							t.Fatalf("error returned partial output: %s", b)
-						}
-						if tc.wantErrIs != nil && !errors.Is(err, tc.wantErrIs) {
-							t.Fatalf("error %v does not wrap %v", err, tc.wantErrIs)
-						}
-						return
+	for _, wrapper := range wrappers {
+		t.Run(wrapper.name, func(t *testing.T) {
+			for _, enc := range encoders {
+				t.Run(enc.name, func(t *testing.T) {
+					for _, tc := range tests {
+						t.Run(tc.name, func(t *testing.T) {
+							env := wrapper.wrap(tc.data)
+
+							b, err := enc.marshal(env)
+							if tc.wantErr {
+								if err == nil {
+									t.Fatalf("expected error, got %s", b)
+								}
+								if len(b) != 0 {
+									t.Fatalf("error returned partial output: %s", b)
+								}
+								if tc.wantErrIs != nil && !errors.Is(err, tc.wantErrIs) {
+									t.Fatalf("error %v does not wrap %v", err, tc.wantErrIs)
+								}
+								return
+							}
+							if err != nil {
+								t.Fatal(err)
+							}
+							assertNoDuplicateKeys(t, b)
+							if !utf8.Valid(b) {
+								t.Fatalf("output is not valid UTF-8: %q", b)
+							}
+							assertJSONEqual(t, b, tc.want)
+						})
 					}
-					if err != nil {
-						t.Fatal(err)
+				})
+			}
+		})
+	}
+}
+
+func TestEncoderMatrix_DuplicateKeysStrict(t *testing.T) {
+	encoders := []struct {
+		name    string
+		marshal func(any) ([]byte, error)
+	}{
+		{name: "encoding/json", marshal: json.Marshal},
+		{name: "goccy/go-json", marshal: goccyjson.Marshal},
+	}
+
+	tests := []struct {
+		name    string
+		payload string
+		wantErr bool
+	}{
+		{name: "clean object", payload: `{"id":1}`},
+		{name: "duplicate top-level key", payload: `{"id":1,"id":2}`, wantErr: true},
+		{name: "duplicate nested key", payload: `{"outer":{"id":1,"id":2}}`, wantErr: true},
+	}
+
+	wrappers := []struct {
+		name string
+		wrap func(any) *Envelope
+	}{
+		{
+			name: "generated",
+			wrap: func(data any) *Envelope {
+				env := New(WithStrictJSON()).WrapRaw(data)
+				env.AddLink(Link{Rel: "self", Href: "/x"})
+				return env
+			},
+		},
+		{
+			name: "precomputed",
+			wrap: func(data any) *Envelope {
+				return New(WithStrictJSON()).WrapPrecomputed(context.Background(), data, []byte(`{"self":{"href":"/x"}}`))
+			},
+		},
+	}
+
+	for _, wrapper := range wrappers {
+		t.Run(wrapper.name, func(t *testing.T) {
+			for _, enc := range encoders {
+				t.Run(enc.name, func(t *testing.T) {
+					for _, tc := range tests {
+						t.Run(tc.name, func(t *testing.T) {
+							env := wrapper.wrap(customMarshaler{payload: tc.payload})
+
+							b, err := enc.marshal(env)
+							if tc.wantErr {
+								if !errors.Is(err, ErrDuplicateJSONKey) {
+									t.Fatalf("error = %v (output %s), want ErrDuplicateJSONKey", err, b)
+								}
+								return
+							}
+							if err != nil {
+								t.Fatal(err)
+							}
+							assertNoDuplicateKeys(t, b)
+						})
 					}
-					assertNoDuplicateKeys(t, b)
-					if !utf8.Valid(b) {
-						t.Fatalf("output is not valid UTF-8: %q", b)
-					}
-					assertJSONEqual(t, b, tc.want)
 				})
 			}
 		})
