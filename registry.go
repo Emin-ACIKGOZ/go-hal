@@ -772,13 +772,21 @@ func (i *Instance) resolveCuriesExcept(links map[string]any, extra []string, inh
 // prefixes that no inherited scope already declares.
 func (i *Instance) curieDeclarationsExcept(prefixes []string, inherited *curieScope) []Link {
 	if len(prefixes) > 0 && inherited != nil {
-		filtered := make([]string, 0, len(prefixes))
+		kept := 0
 		for _, prefix := range prefixes {
 			if !inherited.has(prefix) {
-				filtered = append(filtered, prefix)
+				kept++
 			}
 		}
-		prefixes = filtered
+		if kept != len(prefixes) {
+			filtered := make([]string, 0, kept)
+			for _, prefix := range prefixes {
+				if !inherited.has(prefix) {
+					filtered = append(filtered, prefix)
+				}
+			}
+			prefixes = filtered
+		}
 	}
 	return i.curieDeclarations(prefixes)
 }
