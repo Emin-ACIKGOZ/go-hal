@@ -1,8 +1,6 @@
 module github.com/Emin-ACIKGOZ/go-hal
 
-go 1.22.5
-
-toolchain go1.24.11
+go 1.26.0
 
 require (
 	github.com/getkin/kin-openapi v0.133.0
