@@ -179,23 +179,23 @@ func validateRawEmbeddedObject(raw stdjson.RawMessage) error {
 // marshalEmbeddedResource marshals one embedded value. Direct *Envelope values
 // are marshaled through the scope-aware envelope path; raw values are encoded
 // and required to be non-null JSON objects.
-func marshalEmbeddedResource(value any, depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
+func marshalEmbeddedResource(value any, depth int, ancestors map[*Envelope]struct{}, scope *curieScope, strictJSON bool) ([]byte, error) {
 	switch v := value.(type) {
 	case *Envelope:
-		return marshalEnvelopeChild(v, depth, ancestors, scope)
+		return marshalEnvelopeChild(v, depth, ancestors, scope, strictJSON)
 	case stdjson.RawMessage:
 		return marshalRawEmbeddedValue(v)
 	case []any:
-		return marshalEmbeddedArray(v, depth, ancestors, scope)
+		return marshalEmbeddedArray(v, depth, ancestors, scope, strictJSON)
 	default:
 		return marshalRawEmbeddedValue(value)
 	}
 }
 
-func marshalEmbeddedArray(values []any, depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
+func marshalEmbeddedArray(values []any, depth int, ancestors map[*Envelope]struct{}, scope *curieScope, strictJSON bool) ([]byte, error) {
 	items := make([]stdjson.RawMessage, 0, len(values))
 	for i, value := range values {
-		raw, err := marshalEmbeddedResource(value, depth, ancestors, scope)
+		raw, err := marshalEmbeddedResource(value, depth, ancestors, scope, strictJSON)
 		if err != nil {
 			return nil, fmt.Errorf("embedded element %d: %w", i, err)
 		}
@@ -219,7 +219,7 @@ func marshalRawEmbeddedValue(value any) ([]byte, error) {
 	return raw, nil
 }
 
-func marshalEnvelopeChild(child *Envelope, depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
+func marshalEnvelopeChild(child *Envelope, depth int, ancestors map[*Envelope]struct{}, scope *curieScope, strictJSON bool) ([]byte, error) {
 	if child == nil {
 		return nil, fmt.Errorf("%w: nil *Envelope", ErrInvalidEmbedded)
 	}
@@ -228,7 +228,7 @@ func marshalEnvelopeChild(child *Envelope, depth int, ancestors map[*Envelope]st
 	}
 	ancestors[child] = struct{}{}
 	defer delete(ancestors, child)
-	return child.marshalEnvelope(depth, ancestors, scope)
+	return child.marshalEnvelope(depth, ancestors, scope, strictJSON)
 }
 
 // AddCachedLink adds a link and embeds the same relation's resource, the HAL

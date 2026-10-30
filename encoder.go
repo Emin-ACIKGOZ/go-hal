@@ -31,10 +31,11 @@ var ErrAddLinkPrecomputed = errors.New("hal: cannot add links to a static or pre
 // Envelope values and *Envelope pointers both marshal; direct *Envelope
 // children are marshaled manually with a shared depth and ancestor scope.
 func (e Envelope) MarshalJSON() ([]byte, error) {
-	return e.marshalEnvelope(0, nil, nil)
+	return e.marshalEnvelope(0, nil, nil, false)
 }
 
-func (e Envelope) marshalEnvelope(depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
+func (e Envelope) marshalEnvelope(depth int, ancestors map[*Envelope]struct{}, scope *curieScope, inheritedStrict bool) ([]byte, error) {
+	strictJSON := inheritedStrict || e.instance.strictJSONEnabled()
 	// Caller-supplied precomputed links are validated at construction time;
 	// surface that error rather than emitting corrupted JSON.
 	if e.err != nil {
@@ -49,13 +50,13 @@ func (e Envelope) marshalEnvelope(depth int, ancestors map[*Envelope]struct{}, s
 
 	// OPTIMIZATION: Fast path for pre-computed JSON
 	if e.precomputedJSON != nil {
-		return e.marshalPrecomputed(depth, ancestors, scope)
+		return e.marshalPrecomputed(depth, ancestors, scope, strictJSON)
 	}
-	return e.marshalGenerated(depth, ancestors, scope)
+	return e.marshalGenerated(depth, ancestors, scope, strictJSON)
 }
 
 //nolint:cyclop // Linear precomputed splice path with explicit early returns.
-func (e Envelope) marshalPrecomputed(depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
+func (e Envelope) marshalPrecomputed(depth int, ancestors map[*Envelope]struct{}, scope *curieScope, strictJSON bool) ([]byte, error) {
 	childScope := scope
 	base := e.precomputedJSON
 	strictRelations := e.instance != nil && e.instance.strictRelations
@@ -82,7 +83,7 @@ func (e Envelope) marshalPrecomputed(depth int, ancestors map[*Envelope]struct{}
 			return nil, err
 		}
 	}
-	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, childScope)
+	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, childScope, strictJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +107,7 @@ func (e Envelope) marshalPrecomputed(depth int, ancestors map[*Envelope]struct{}
 	if err := validateDataJSON(dataBytes); err != nil {
 		return nil, err
 	}
-	if err := e.scanStrictData(dataBytes, isDataNull, isDataEmptyObj); err != nil {
+	if err := e.scanStrictData(dataBytes, isDataNull, isDataEmptyObj, strictJSON); err != nil {
 		return nil, err
 	}
 	if err := checkReservedHALFields(dataBytes); err != nil {
@@ -132,7 +133,7 @@ func combinePrecomputedEmbedded(base, embeddedJSON []byte) []byte {
 	return out
 }
 
-func (e Envelope) marshalGenerated(depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
+func (e Envelope) marshalGenerated(depth int, ancestors map[*Envelope]struct{}, scope *curieScope, strictJSON bool) ([]byte, error) {
 	// 1. Marshal the underlying data
 	dataBytes, err := e.marshalData()
 	if err != nil {
@@ -147,7 +148,7 @@ func (e Envelope) marshalGenerated(depth int, ancestors map[*Envelope]struct{}, 
 	if err := validateDataJSON(dataBytes); err != nil {
 		return nil, err
 	}
-	if err := e.scanStrictData(dataBytes, isDataNull, isEmptyObj); err != nil {
+	if err := e.scanStrictData(dataBytes, isDataNull, isEmptyObj, strictJSON); err != nil {
 		return nil, err
 	}
 
@@ -160,7 +161,7 @@ func (e Envelope) marshalGenerated(depth int, ancestors map[*Envelope]struct{}, 
 	}
 
 	// 3. Prepare HAL metadata (_links, _embedded)
-	metaBytes, err := e.marshalMeta(depth, ancestors, scope)
+	metaBytes, err := e.marshalMeta(depth, ancestors, scope, strictJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -169,8 +170,8 @@ func (e Envelope) marshalGenerated(depth int, ancestors map[*Envelope]struct{}, 
 	return spliceJSON(dataBytes, metaBytes, isDataNull, isEmptyObj), nil
 }
 
-func (e Envelope) scanStrictData(data []byte, isNull, isEmptyObject bool) error {
-	if e.instance == nil || !e.instance.strictJSON || isNull || isEmptyObject {
+func (e Envelope) scanStrictData(data []byte, isNull, isEmptyObject bool, strictJSON bool) error {
+	if isNull || isEmptyObject || !strictJSON {
 		return nil
 	}
 	if err := findDuplicateJSONKeys(data); err != nil {
@@ -178,6 +179,8 @@ func (e Envelope) scanStrictData(data []byte, isNull, isEmptyObject bool) error 
 	}
 	return nil
 }
+
+func (i *Instance) strictJSONEnabled() bool { return i != nil && i.strictJSON }
 
 func validateDataJSON(data []byte) error {
 	if !utf8.Valid(data) {
@@ -492,7 +495,7 @@ func checkHALFieldKey(dec *stdjson.Decoder) error {
 }
 
 //nolint:cyclop // Metadata assembly is linear; splitting hides the splice rules.
-func (e Envelope) marshalMeta(depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
+func (e Envelope) marshalMeta(depth int, ancestors map[*Envelope]struct{}, scope *curieScope, strictJSON bool) ([]byte, error) {
 	// Build a local view instead of mutating e.links: an Envelope may be
 	// marshaled more than once, including concurrently.
 	links := e.links
@@ -529,7 +532,7 @@ func (e Envelope) marshalMeta(depth int, ancestors map[*Envelope]struct{}, scope
 		return nil, err
 	}
 
-	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, childScope)
+	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, childScope, strictJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -564,7 +567,7 @@ func wrapMetaObject(linksJSON, embeddedJSON []byte) []byte {
 	return out
 }
 
-func (e Envelope) marshalEmbedded(depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
+func (e Envelope) marshalEmbedded(depth int, ancestors map[*Envelope]struct{}, scope *curieScope, strictJSON bool) ([]byte, error) {
 	if len(e.embedded) == 0 {
 		return nil, nil
 	}
@@ -573,7 +576,7 @@ func (e Envelope) marshalEmbedded(depth int, ancestors map[*Envelope]struct{}, s
 	}
 	values := make(map[string]stdjson.RawMessage, len(e.embedded))
 	for rel, value := range e.embedded {
-		raw, err := marshalEmbeddedResource(value, depth+1, ancestors, scope)
+		raw, err := marshalEmbeddedResource(value, depth+1, ancestors, scope, strictJSON)
 		if err != nil {
 			return nil, fmt.Errorf("hal: embedded relation %q: %w", rel, err)
 		}

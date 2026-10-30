@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
 )
 
@@ -117,5 +118,142 @@ func TestWithStrictJSON_SkipsEmptyObject(t *testing.T) {
 	env := New(WithStrictJSON()).WrapRaw(json.RawMessage(`{}`))
 	if _, err := json.Marshal(env); err != nil {
 		t.Fatalf("empty object rejected: %v", err)
+	}
+}
+
+func TestWithStrictJSON_InheritsIntoPermissiveChild(t *testing.T) {
+	t.Parallel()
+
+	parent := New(WithStrictJSON()).WrapRaw(&embeddedTestUser{ID: 1})
+	child := New().WrapRaw(json.RawMessage(`{"a":1,"a":2}`))
+	parent.AddEmbedded("child", child)
+
+	out, err := json.Marshal(parent)
+	if !errors.Is(err, ErrDuplicateJSONKey) {
+		t.Fatalf("error = %v (output %s), want ErrDuplicateJSONKey", err, out)
+	}
+	if len(out) != 0 {
+		t.Fatalf("error returned partial output: %s", out)
+	}
+	var dup *DuplicateKeyError
+	if !errors.As(err, &dup) || dup.Key != "a" {
+		t.Fatalf("error does not expose DuplicateKeyError: %v", err)
+	}
+}
+
+func TestWithStrictJSON_StrictChildUnderPermissiveParent(t *testing.T) {
+	t.Parallel()
+
+	parent := New().WrapRaw(&embeddedTestUser{ID: 1})
+	child := New(WithStrictJSON()).WrapRaw(json.RawMessage(`{"a":1,"a":2}`))
+	parent.AddEmbedded("child", child)
+
+	if _, err := json.Marshal(parent); !errors.Is(err, ErrDuplicateJSONKey) {
+		t.Fatalf("error = %v, want ErrDuplicateJSONKey", err)
+	}
+}
+
+func TestWithStrictJSON_InheritanceIsTransitive(t *testing.T) {
+	t.Parallel()
+
+	root := New(WithStrictJSON()).WrapRaw(&embeddedTestUser{ID: 1})
+	middle := New().WrapRaw(&embeddedTestUser{ID: 2})
+	leaf := New().WrapRaw(json.RawMessage(`{"a":1,"a":2}`))
+	middle.AddEmbedded("leaf", leaf)
+	root.AddEmbedded("middle", middle)
+
+	if _, err := json.Marshal(root); !errors.Is(err, ErrDuplicateJSONKey) {
+		t.Fatalf("error = %v, want ErrDuplicateJSONKey", err)
+	}
+
+	// The failed parent marshal must not mutate the leaf's permissive policy.
+	if _, err := json.Marshal(leaf); err != nil {
+		t.Fatalf("child was mutated by parent marshal: %v", err)
+	}
+}
+
+func TestWithStrictJSON_NilAndEmptyChildData(t *testing.T) {
+	t.Parallel()
+
+	parent := New(WithStrictJSON()).WrapRaw(&embeddedTestUser{ID: 1})
+	parent.AddEmbedded("nil", New().WrapRaw(nil))
+	parent.AddEmbedded("empty", New().WrapRaw(json.RawMessage(`{}`)))
+
+	b, err := json.Marshal(parent)
+	if err != nil {
+		t.Fatalf("nil/empty child data rejected: %v", err)
+	}
+	if !json.Valid(b) {
+		t.Fatalf("invalid JSON: %s", b)
+	}
+}
+
+func TestWithStrictJSON_SiblingIsolation(t *testing.T) {
+	t.Parallel()
+
+	parent := New(WithStrictJSON()).WrapRaw(&embeddedTestUser{ID: 1})
+	parent.AddEmbedded("clean", New().WrapRaw(json.RawMessage(`{"ok":1}`)))
+	parent.AddEmbedded("bad", New().WrapRaw(json.RawMessage(`{"a":1,"a":2}`)))
+
+	if _, err := json.Marshal(parent); !errors.Is(err, ErrDuplicateJSONKey) {
+		t.Fatalf("error = %v, want ErrDuplicateJSONKey", err)
+	}
+}
+
+func TestWithStrictJSON_InheritsIntoPrecomputedChildren(t *testing.T) {
+	t.Parallel()
+
+	parent := New(WithStrictJSON()).WrapPrecomputed(
+		context.Background(),
+		&embeddedTestUser{ID: 1},
+		[]byte(`{"self":{"href":"/x"}}`),
+	)
+	child := New().WrapPrecomputed(
+		context.Background(),
+		json.RawMessage(`{"a":1,"a":2}`),
+		[]byte(`{"self":{"href":"/child"}}`),
+	)
+	parent.AddEmbedded("child", child)
+
+	if _, err := json.Marshal(parent); !errors.Is(err, ErrDuplicateJSONKey) {
+		t.Fatalf("error = %v, want ErrDuplicateJSONKey", err)
+	}
+}
+
+func TestWithStrictJSON_RepeatedAndConcurrentMarshal(t *testing.T) {
+	t.Parallel()
+
+	parent := New(WithStrictJSON()).WrapRaw(&embeddedTestUser{ID: 1})
+	parent.AddEmbedded("child", New().WrapRaw(json.RawMessage(`{"ok":1}`)))
+
+	first, err := json.Marshal(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		got, err := json.Marshal(parent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != string(first) {
+			t.Fatalf("repeated marshal changed output:\n%s\n%s", first, got)
+		}
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := json.Marshal(parent); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("concurrent marshal failed: %v", err)
 	}
 }
