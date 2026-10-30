@@ -5,6 +5,7 @@ package hal
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 )
 
@@ -36,6 +37,11 @@ func (i *Instance) Collection(ctx context.Context, items any, total int, selfLin
 	val := reflect.ValueOf(items)
 	if val.Kind() != reflect.Slice {
 		panic("hal: Collection items must be a slice")
+	}
+	if i.strictLinks {
+		if err := ValidateLink(selfLink); err != nil {
+			panic(fmt.Sprintf("hal: Collection: %v", err))
+		}
 	}
 
 	count := val.Len()

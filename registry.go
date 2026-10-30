@@ -42,12 +42,13 @@ type Generator func(ctx context.Context, v any) []Link
 //	// With strict mode
 //	inst := hal.New(hal.WithStrictMode())
 type Instance struct {
-	mu          sync.RWMutex
-	generators  map[reflect.Type]Generator
-	precomputed map[reflect.Type]*PrecomputedLinks // OPTIMIZATION: static pre-computed
-	curies      map[string]string
-	strictMode  bool
-	strictLinks bool
+	mu           sync.RWMutex
+	generators   map[reflect.Type]Generator
+	precomputed  map[reflect.Type]*PrecomputedLinks // OPTIMIZATION: static pre-computed
+	curies       map[string]string
+	strictMode   bool
+	strictLinks  bool
+	strictCuries bool
 }
 
 // New creates a new HAL Instance.
@@ -169,7 +170,7 @@ func RegisterInstance[T any](i *Instance, gen func(context.Context, *T) []Link) 
 //	env := inst.Wrap(ctx, &User{ID: 42})
 func RegisterStatic(i *Instance, target any, links []Link) {
 	targetType := validateStaticTarget(i, target)
-	pre := compileStaticLinks(links)
+	pre := compileStaticLinks(links, i)
 
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -190,12 +191,18 @@ func validateStaticTarget(i *Instance, target any) reflect.Type {
 	return targetType
 }
 
-func compileStaticLinks(links []Link) *PrecomputedLinks {
+//nolint:cyclop // Registration is a linear validation loop.
+func compileStaticLinks(links []Link, inst *Instance) *PrecomputedLinks {
 	var curies []Link
 	linksMap := make(map[string]any, len(links))
 	for _, l := range links {
 		if strings.TrimSpace(l.Rel) == "" {
 			panic("hal: RegisterStatic: link relation must not be empty")
+		}
+		if inst != nil && inst.strictLinks {
+			if err := ValidateLink(l); err != nil {
+				panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
+			}
 		}
 		if l.Rel == relCuries {
 			curies = append(curies, l)
@@ -208,8 +215,11 @@ func compileStaticLinks(links []Link) *PrecomputedLinks {
 	normalizeStaticCuries(linksMap)
 
 	pre := &PrecomputedLinks{
-		prefixes:  linkRelationPrefixes(links),
-		validated: true,
+		prefixes:     linkRelationPrefixes(links),
+		curies:       append([]Link(nil), curies...),
+		validated:    true,
+		strictLinks:  inst != nil && inst.strictLinks,
+		strictCuries: inst != nil && inst.strictCuries,
 	}
 	if len(links) > 0 {
 		pre.JSON = wrapStaticLinks(linksMap)
@@ -246,19 +256,41 @@ func wrapStaticLinks(linksMap map[string]any) []byte {
 // mutate it after compilation. Its zero value means an empty link set with no
 // _links field. Use CompilePrecomputedLinks to build a handle from caller JSON.
 type PrecomputedLinks struct {
-	JSON      []byte   // wrapped {"_links":...}; read-only; owned by handle
-	prefixes  []string // sorted unique CURIE prefixes used by relations
-	validated bool
+	JSON         []byte   // wrapped {"_links":...}; read-only; owned by handle
+	prefixes     []string // sorted unique CURIE prefixes used by relations
+	curies       []Link   // decoded declarations in source order
+	validated    bool
+	strictLinks  bool
+	strictCuries bool
 }
 
 // CompilePrecomputedLinks validates and copies caller-supplied link JSON once,
-// producing a handle that can be reused across envelopes and instances.
+// producing a structurally validated handle that can be reused across envelopes
+// and instances. It does not opt into strict link or CURIE semantics.
 func CompilePrecomputedLinks(linksJSON []byte) (*PrecomputedLinks, error) {
-	normalized, prefixes, err := normalizePrecomputedLinks(linksJSON)
+	return compilePrecomputedLinks(linksJSON, false, false)
+}
+
+// CompilePrecomputedLinksStrict is CompilePrecomputedLinks plus strict link and
+// strict CURIE validation. The resulting handle can be wrapped by strict
+// instances without revalidation.
+func CompilePrecomputedLinksStrict(linksJSON []byte) (*PrecomputedLinks, error) {
+	return compilePrecomputedLinks(linksJSON, true, true)
+}
+
+func compilePrecomputedLinks(linksJSON []byte, strictLinks, strictCuries bool) (*PrecomputedLinks, error) {
+	normalized, prefixes, curies, err := normalizePrecomputedLinksPolicy(linksJSON, strictLinks)
 	if err != nil {
 		return nil, err
 	}
-	return &PrecomputedLinks{JSON: normalized, prefixes: prefixes, validated: true}, nil
+	return &PrecomputedLinks{
+		JSON:         normalized,
+		prefixes:     prefixes,
+		curies:       curies,
+		validated:    true,
+		strictLinks:  strictLinks,
+		strictCuries: strictCuries,
+	}, nil
 }
 
 // introspection hook for the unsafe method
@@ -321,7 +353,7 @@ func (i *Instance) Wrap(ctx context.Context, data any) *Envelope {
 //	env := inst.WrapPrecomputed(ctx, &User{ID: 42}, links)
 //	json.Marshal(env)
 func (i *Instance) WrapPrecomputed(_ context.Context, data any, linksJSON []byte) *Envelope {
-	links, err := CompilePrecomputedLinks(linksJSON)
+	links, err := compilePrecomputedLinks(linksJSON, i.strictLinks, i.strictCuries)
 	if err != nil {
 		return &Envelope{Data: data, instance: i, err: err, premanaged: true}
 	}
@@ -348,6 +380,10 @@ func (i *Instance) wrapPrecomputedHandle(data any, links *PrecomputedLinks) *Env
 		// Empty precomputed set: suppress generators and emit no _links.
 	case !links.validated:
 		e.err = errPrecomputedUnvalidated
+	case i.strictLinks && !links.strictLinks:
+		e.err = fmt.Errorf("%w: precomputed handle was not compiled with strict links", ErrInvalidLink)
+	case i.strictCuries && !links.strictCuries:
+		e.err = fmt.Errorf("%w: precomputed handle was not compiled with strict CURIEs", ErrInvalidCurie)
 	default:
 		resolved, err := i.resolvePrecomputedLinks(links)
 		if err != nil {
@@ -364,23 +400,29 @@ func (i *Instance) wrapPrecomputedHandle(data any, links *PrecomputedLinks) *Env
 // so callers can pass either representation. Invalid input is reported instead
 // of being spliced into the output.
 func normalizePrecomputedLinks(linksJSON []byte) ([]byte, []string, error) {
+	normalized, prefixes, _, err := normalizePrecomputedLinksPolicy(linksJSON, false)
+	return normalized, prefixes, err
+}
+
+func normalizePrecomputedLinksPolicy(linksJSON []byte, strictLinks bool) ([]byte, []string, []Link, error) {
 	linksJSON = bytes.TrimSpace(linksJSON)
 	if len(linksJSON) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	fields, err := decodePrecomputedObject(linksJSON)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if rawLinks, ok := fields[fieldLinks]; ok {
-		return normalizeWrappedPrecomputedLinks(linksJSON, fields, rawLinks)
+		return normalizeWrappedPrecomputedLinks(linksJSON, fields, rawLinks, strictLinks)
 	}
 
-	if err := validatePrecomputedLinkRelations(fields); err != nil {
-		return nil, nil, err
+	curies, err := validatePrecomputedLinkRelations(fields, strictLinks)
+	if err != nil {
+		return nil, nil, nil, err
 	}
-	return wrapPrecomputedLinks(linksJSON), rawRelationPrefixes(fields), nil
+	return wrapPrecomputedLinks(linksJSON), rawRelationPrefixes(fields), curies, nil
 }
 
 func decodePrecomputedObject(linksJSON []byte) (map[string]stdjson.RawMessage, error) {
@@ -405,19 +447,21 @@ func normalizeWrappedPrecomputedLinks(
 	linksJSON []byte,
 	fields map[string]stdjson.RawMessage,
 	rawLinks stdjson.RawMessage,
-) ([]byte, []string, error) {
+	strictLinks bool,
+) ([]byte, []string, []Link, error) {
 	if len(fields) != 1 {
-		return nil, nil, errors.New("hal: wrapped precomputed links must contain only _links")
+		return nil, nil, nil, errors.New("hal: wrapped precomputed links must contain only _links")
 	}
 	var links map[string]stdjson.RawMessage
 	if err := stdjson.Unmarshal(rawLinks, &links); err != nil || links == nil {
-		return nil, nil, errors.New("hal: precomputed _links must be a JSON object")
+		return nil, nil, nil, errors.New("hal: precomputed _links must be a JSON object")
 	}
-	if err := validatePrecomputedLinkRelations(links); err != nil {
-		return nil, nil, err
+	curies, err := validatePrecomputedLinkRelations(links, strictLinks)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 	// Own the wrapped form too: callers may reuse or mutate their buffer.
-	return bytes.Clone(linksJSON), rawRelationPrefixes(links), nil
+	return bytes.Clone(linksJSON), rawRelationPrefixes(links), curies, nil
 }
 
 func wrapPrecomputedLinks(linksJSON []byte) []byte {
@@ -430,29 +474,32 @@ func wrapPrecomputedLinks(linksJSON []byte) []byte {
 
 // validatePrecomputedLinkRelations checks the HAL link relation shape before
 // pre-serialized links are trusted for byte splicing.
-func validatePrecomputedLinkRelations(links map[string]stdjson.RawMessage) error {
+func validatePrecomputedLinkRelations(links map[string]stdjson.RawMessage, strictLinks bool) ([]Link, error) {
+	var curies []Link
 	for rel, raw := range links {
 		if strings.TrimSpace(rel) == "" {
-			return errors.New("hal: precomputed link relation must not be empty")
+			return nil, errors.New("hal: precomputed link relation must not be empty")
 		}
-		if err := validatePrecomputedRelationValue(rel, raw); err != nil {
-			return err
+		if err := validatePrecomputedRelationValue(rel, raw, strictLinks); err != nil {
+			return nil, err
 		}
 	}
 	if raw, ok := links[relCuries]; ok {
-		if err := validatePrecomputedCuries(raw); err != nil {
-			return fmt.Errorf("hal: precomputed curies: %w", err)
+		decoded, err := validatePrecomputedCuries(raw, strictLinks)
+		if err != nil {
+			return nil, fmt.Errorf("hal: precomputed curies: %w", err)
 		}
+		curies = decoded
 	}
-	return nil
+	return curies, nil
 }
 
-func validatePrecomputedCuries(raw stdjson.RawMessage) error {
-	_, _, err := decodePrecomputedCurieRaw(raw)
-	return err
+func validatePrecomputedCuries(raw stdjson.RawMessage, strictLinks bool) ([]Link, error) {
+	_, declarations, err := decodePrecomputedCurieRaw(raw, strictLinks)
+	return declarations, err
 }
 
-func decodePrecomputedCurieRaw(raw stdjson.RawMessage) ([]stdjson.RawMessage, []Link, error) {
+func decodePrecomputedCurieRaw(raw stdjson.RawMessage, strictLinks bool) ([]stdjson.RawMessage, []Link, error) {
 	var rawDeclarations []stdjson.RawMessage
 	if err := stdjson.Unmarshal(raw, &rawDeclarations); err != nil {
 		return nil, nil, errors.New("must be an array of link objects")
@@ -462,6 +509,11 @@ func decodePrecomputedCurieRaw(raw stdjson.RawMessage) ([]stdjson.RawMessage, []
 		var declaration Link
 		if err := stdjson.Unmarshal(item, &declaration); err != nil {
 			return nil, nil, fmt.Errorf("element %d: %w", i, err)
+		}
+		if strictLinks {
+			if err := ValidateLink(declaration); err != nil {
+				return nil, nil, fmt.Errorf("element %d: %w", i, err)
+			}
 		}
 		declarations = append(declarations, declaration)
 	}
@@ -539,7 +591,7 @@ var precomputedLinkSchema = map[string]jsonValueKind{
 	"method":      jsonString,
 }
 
-func validatePrecomputedRelationValue(rel string, raw stdjson.RawMessage) error {
+func validatePrecomputedRelationValue(rel string, raw stdjson.RawMessage, strictLinks bool) error {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {
 		return fmt.Errorf("hal: precomputed relation %q must be a link object or array of link objects", rel)
@@ -551,7 +603,7 @@ func validatePrecomputedRelationValue(rel string, raw stdjson.RawMessage) error 
 			return fmt.Errorf("hal: precomputed relation %q must be an array of link objects: %w", rel, err)
 		}
 		for i, item := range items {
-			if err := validatePrecomputedLinkObject(rel, item); err != nil {
+			if err := validatePrecomputedLinkObject(rel, item, strictLinks); err != nil {
 				return fmt.Errorf("hal: precomputed relation %q element %d: %w", rel, i, err)
 			}
 		}
@@ -561,10 +613,11 @@ func validatePrecomputedRelationValue(rel string, raw stdjson.RawMessage) error 
 	if rel == relCuries {
 		return errors.New("hal: precomputed curies relation must be an array of link objects")
 	}
-	return validatePrecomputedLinkObject(rel, trimmed)
+	return validatePrecomputedLinkObject(rel, trimmed, strictLinks)
 }
 
-func validatePrecomputedLinkObject(rel string, raw stdjson.RawMessage) error {
+//nolint:cyclop // Schema checks are intentionally explicit per field.
+func validatePrecomputedLinkObject(rel string, raw stdjson.RawMessage, strictLinks bool) error {
 	if linkValueKind(raw) != jsonObject {
 		return fmt.Errorf("hal: precomputed relation %q must contain link objects", rel)
 	}
@@ -592,6 +645,15 @@ func validatePrecomputedLinkObject(rel string, raw stdjson.RawMessage) error {
 					rel, field, want,
 				)
 			}
+		}
+	}
+	if strictLinks {
+		var link Link
+		if err := stdjson.Unmarshal(raw, &link); err != nil {
+			return fmt.Errorf("hal: precomputed relation %q link: %w", rel, err)
+		}
+		if err := ValidateLink(link); err != nil {
+			return fmt.Errorf("hal: precomputed relation %q: %w", rel, err)
 		}
 	}
 	return nil
@@ -691,7 +753,7 @@ func mergePrecomputedCuries(linksJSON []byte, registered []Link) ([]byte, error)
 	var user []Link
 	if raw, ok := links[relCuries]; ok {
 		var err error
-		userRaw, user, err = decodePrecomputedCurieRaw(raw)
+		userRaw, user, err = decodePrecomputedCurieRaw(raw, false)
 		if err != nil {
 			return nil, fmt.Errorf("hal: precomputed curies: %w", err)
 		}
