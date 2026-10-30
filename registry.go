@@ -10,9 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"sync"
 	"unicode/utf8"
 
+	"github.com/Emin-ACIKGOZ/go-hal/internal/relation"
 	json "github.com/goccy/go-json"
 )
 
@@ -206,17 +208,12 @@ func compileStaticLinks(links []Link, inst *Instance) *PrecomputedLinks {
 	index := make(relationIndex, len(links))
 	for _, l := range links {
 		l = normalizeLink(l)
-		kind, meta, err := analyzeRelation(l.Rel)
+		_, meta, err := analyzeRelation(l.Rel)
 		if err != nil {
 			panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
 		}
 		if err := index.check(l.Rel, meta, linksMap); err != nil {
 			panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
-		}
-		if inst != nil && inst.strictRelations {
-			if err := inst.validateStrictRelationKind(l.Rel, kind); err != nil {
-				panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
-			}
 		}
 		if inst != nil && inst.strictLinks {
 			if err := ValidateLink(l); err != nil {
@@ -231,6 +228,14 @@ func compileStaticLinks(links []Link, inst *Instance) *PrecomputedLinks {
 	}
 	if err := validateCurieDeclarations(curies, inst != nil && inst.strictCuries); err != nil {
 		panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
+	}
+	if inst != nil && inst.strictRelations {
+		scope := extendCurieScope(nil, curies)
+		for _, l := range links {
+			if err := inst.validateStrictRelationKindScoped(l.Rel, relation.Classify(l.Rel), scope); err != nil {
+				panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
+			}
+		}
 	}
 	normalizeStaticCuries(linksMap)
 	if inst != nil {
@@ -952,11 +957,23 @@ func appendMissingCuries(userRaw []stdjson.RawMessage, user, registered []Link) 
 	return merged, nil
 }
 
-// validatePrecomputedStrictRelations re-checks relation keys on a reusable
-// handle when the wrapping instance enables WithStrictRelations. Structural
-// validation already ran at compile time; this opt-in check keeps the
-// PrecomputedLinks fast path free of relation policy otherwise.
+// validatePrecomputedStrictRelations re-checks non-deferred relation keys on a
+// reusable handle when the wrapping instance enables WithStrictRelations.
+// Structural validation already ran at compile time; this opt-in check keeps
+// the PrecomputedLinks fast path free of relation policy otherwise. Deferred
+// CURIE prefixes are validated at marshal time, where resource-local and
+// inherited declarations are known.
 func (i *Instance) validatePrecomputedStrictRelations(linksJSON []byte) error {
+	return i.validatePrecomputedRelationKeys(linksJSON, nil, false)
+}
+
+// validatePrecomputedDeferredRelations validates the relation keys that could
+// not be decided at wrap time against the effective marshal scope.
+func (i *Instance) validatePrecomputedDeferredRelations(linksJSON []byte, scope *curieScope) error {
+	return i.validatePrecomputedRelationKeys(linksJSON, scope, true)
+}
+
+func (i *Instance) validatePrecomputedRelationKeys(linksJSON []byte, scope *curieScope, deferred bool) error {
 	fields, err := decodePrecomputedObject(linksJSON)
 	if err != nil {
 		return err
@@ -969,8 +986,15 @@ func (i *Instance) validatePrecomputedStrictRelations(linksJSON []byte) error {
 		}
 		links = wrapped
 	}
+	rels := make([]string, 0, len(links))
 	for rel := range links {
-		if err := i.validateStrictRelation(rel); err != nil {
+		if i.deferStrictRelation(rel) == deferred {
+			rels = append(rels, rel)
+		}
+	}
+	sort.Strings(rels)
+	for _, rel := range rels {
+		if err := i.validateStrictRelationKindScoped(rel, relation.Classify(rel), scope); err != nil {
 			return fmt.Errorf("hal: precomputed %w", err)
 		}
 	}

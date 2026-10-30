@@ -58,7 +58,8 @@ func (e Envelope) marshalEnvelope(depth int, ancestors map[*Envelope]struct{}, s
 func (e Envelope) marshalPrecomputed(depth int, ancestors map[*Envelope]struct{}, scope *curieScope) ([]byte, error) {
 	childScope := scope
 	base := e.precomputedJSON
-	if len(e.embedded) > 0 && len(base) > 0 {
+	strictRelations := e.instance != nil && e.instance.strictRelations
+	if (len(e.embedded) > 0 || strictRelations) && len(base) > 0 {
 		declarations, err := precomputedCurieDeclarations(base)
 		if err != nil {
 			return nil, err
@@ -71,6 +72,14 @@ func (e Envelope) marshalPrecomputed(depth int, ancestors map[*Envelope]struct{}
 				return nil, err
 			}
 			childScope = extendCurieScope(childScope, extra)
+		}
+	}
+	if strictRelations {
+		if err := e.instance.validatePrecomputedDeferredRelations(base, childScope); err != nil {
+			return nil, err
+		}
+		if err := e.instance.validateStrictRelationMaps(nil, e.embedded, childScope); err != nil {
+			return nil, err
 		}
 	}
 	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, childScope)
@@ -516,6 +525,9 @@ func (e Envelope) marshalMeta(depth int, ancestors map[*Envelope]struct{}, scope
 		return nil, err
 	}
 	childScope := extendCurieScope(scope, declarations)
+	if err := e.instance.validateStrictRelationMaps(e.links, e.embedded, childScope); err != nil {
+		return nil, err
+	}
 
 	embeddedJSON, err := e.marshalEmbedded(depth, ancestors, childScope)
 	if err != nil {
