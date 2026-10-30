@@ -203,7 +203,7 @@ func IsToken(ref string) bool {
 		switch {
 		case c >= 'a' && c <= 'z':
 		case c >= '0' && c <= '9':
-		case c == '.', c == '-', c == '_':
+		case c == '.', c == '-':
 		default:
 			return false
 		}
@@ -227,7 +227,7 @@ func FoldBareToken(ref string) (string, bool) {
 			if !isASCIIAlpha(c) {
 				return "", false
 			}
-		} else if !isASCIIAlpha(c) && (c < '0' || c > '9') && c != '.' && c != '-' && c != '_' {
+		} else if !isASCIIAlpha(c) && (c < '0' || c > '9') && c != '.' && c != '-' {
 			return "", false
 		}
 		if c >= 'A' && c <= 'Z' {

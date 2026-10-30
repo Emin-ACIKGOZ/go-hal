@@ -18,7 +18,6 @@ func TestWithStrictRelations_Accepts(t *testing.T) {
 
 	valid := []string{
 		"self",
-		"a.b-c_d",
 		"https://example.com/rels/widget",
 		"urn:isbn:0451450523",
 		"mailto:user@example.com",
@@ -41,7 +40,7 @@ func TestWithStrictRelations_Rejects(t *testing.T) {
 	t.Parallel()
 
 	inst := New(WithStrictRelations())
-	invalid := []string{"Self", "SELF", "/relative", "../up", ":x", "foo/bar", "a b"}
+	invalid := []string{"Self", "SELF", "/relative", "../up", ":x", "foo/bar", "a b", "a_b", "a.b-c_d"}
 	for _, rel := range invalid {
 		t.Run(rel, func(t *testing.T) {
 			env := inst.WrapRaw(&embeddedTestUser{ID: 1})
@@ -106,6 +105,7 @@ func TestWithStrictRelations_DoesNotChangeDefault(t *testing.T) {
 
 	env := New().WrapRaw(&embeddedTestUser{ID: 1})
 	env.AddLink(Link{Rel: "Self", Href: "/x"})
+	env.AddLink(Link{Rel: "a_b", Href: "/y"})
 	if _, err := json.Marshal(env); err != nil {
 		t.Fatalf("default relation rejected: %v", err)
 	}

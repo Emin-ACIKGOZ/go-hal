@@ -196,6 +196,25 @@ func TestAddEmbedded_RelativeReferencesDoNotCollide(t *testing.T) {
 	}
 }
 
+func TestAddLink_UnderscoreTokensDoNotCollide(t *testing.T) {
+	t.Parallel()
+
+	env := New().WrapRaw(&embeddedTestUser{ID: 1})
+	env.AddLink(Link{Rel: "a_b", Href: "/a"})
+	env.AddLink(Link{Rel: "A_B", Href: "/b"})
+
+	b, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("underscore relations collided: %v", err)
+	}
+	links := decodeJSONValue(t, b).(map[string]any)["_links"].(map[string]any)
+	for _, rel := range []string{"a_b", "A_B"} {
+		if _, exists := links[rel]; !exists {
+			t.Fatalf("relation %q missing from %v", rel, links)
+		}
+	}
+}
+
 func TestAddLink_BareTokenCollisionStillRejected(t *testing.T) {
 	t.Parallel()
 

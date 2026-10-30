@@ -76,14 +76,35 @@ func TestHasScheme(t *testing.T) {
 
 func TestIsToken(t *testing.T) {
 	t.Parallel()
-	for _, ref := range []string{"self", "a", "a1", "a.b-c_d"} {
+	for _, ref := range []string{"self", "a", "a1", "a.b-c"} {
 		if !IsToken(ref) {
 			t.Errorf("IsToken(%q) = false, want true", ref)
 		}
 	}
-	for _, ref := range []string{"", "Self", "1self", "a:b", "a/b", "a b", "a~b"} {
+	for _, ref := range []string{"", "Self", "1self", "a:b", "a/b", "a b", "a~b", "a_b", "a.b-c_d"} {
 		if IsToken(ref) {
 			t.Errorf("IsToken(%q) = true, want false", ref)
+		}
+	}
+}
+
+func TestFoldBareToken(t *testing.T) {
+	t.Parallel()
+
+	valid := map[string]string{
+		"self":  "self",
+		"SELF":  "self",
+		"a.b-c": "a.b-c",
+	}
+	for ref, want := range valid {
+		got, ok := FoldBareToken(ref)
+		if !ok || got != want {
+			t.Errorf("FoldBareToken(%q) = (%q, %t), want (%q, true)", ref, got, ok, want)
+		}
+	}
+	for _, ref := range []string{"", "a_b", "a.b-c_d", "a/b", "?query", "#frag", "a:b", "1self"} {
+		if got, ok := FoldBareToken(ref); ok {
+			t.Errorf("FoldBareToken(%q) = (%q, true), want false", ref, got)
 		}
 	}
 }
