@@ -110,6 +110,36 @@ func FuzzMarshal_WithoutGenerator(f *testing.F) {
 	})
 }
 
+func FuzzNormalizeLink(f *testing.F) {
+	f.Add("/orders{?id}", false)
+	f.Add("{+path}", false)
+	f.Add("/orders/%7Bid%7D", false)
+	f.Add("/orders{=id}", false)
+	f.Add("/orders", true)
+	f.Add("", false)
+
+	f.Fuzz(func(t *testing.T, href string, templated bool) {
+		if !utf8.ValidString(href) {
+			t.Skip()
+		}
+		in := Link{Rel: "find", Href: href, Templated: templated}
+		normalized := normalizeLink(in)
+		if in.Templated != templated || in.Href != href {
+			t.Fatalf("normalizeLink mutated its input: %#v", in)
+		}
+		want := templated || deriveTemplated(href)
+		if normalized.Templated != want {
+			t.Fatalf("normalizeLink(%q, %t).Templated = %t, want %t",
+				href, templated, normalized.Templated, want)
+		}
+		if twice := normalizeLink(normalized); twice != normalized {
+			t.Fatalf("normalizeLink is not idempotent for %q: %#v then %#v",
+				href, normalized, twice)
+		}
+		_ = ValidateLink(in) // must not panic on arbitrary input
+	})
+}
+
 func FuzzLink_AddLink(f *testing.F) {
 	f.Add("self", "/users/1")
 	f.Add("item", "/items/{id}")
