@@ -555,6 +555,9 @@ func decodePrecomputedCurieRaw(raw stdjson.RawMessage, strictLinks, strictCuries
 	}
 	if strictLinks {
 		for i, declaration := range declarations {
+			if err := requireExplicitTemplated(declaration); err != nil {
+				return nil, nil, fmt.Errorf("element %d: %w", i, err)
+			}
 			if err := ValidateLink(declaration); err != nil {
 				return nil, nil, fmt.Errorf("element %d: %w", i, err)
 			}
@@ -692,9 +695,22 @@ func validatePrecomputedLinkObject(rel string, raw stdjson.RawMessage, strictLin
 		if err := stdjson.Unmarshal(raw, &link); err != nil {
 			return fmt.Errorf("hal: precomputed relation %q link: %w", rel, err)
 		}
+		if err := requireExplicitTemplated(link); err != nil {
+			return fmt.Errorf("hal: precomputed relation %q: %w", rel, err)
+		}
 		if err := ValidateLink(link); err != nil {
 			return fmt.Errorf("hal: precomputed relation %q: %w", rel, err)
 		}
+	}
+	return nil
+}
+
+// requireExplicitTemplated rejects a precomputed link whose href is a template
+// but whose JSON does not set templated: true. Precomputed bytes are emitted
+// verbatim, so derivation cannot be applied without rewriting caller JSON.
+func requireExplicitTemplated(l Link) error {
+	if !l.Templated && normalizeLink(l).Templated {
+		return fmt.Errorf("%w: precomputed template href requires templated true", ErrInvalidLink)
 	}
 	return nil
 }

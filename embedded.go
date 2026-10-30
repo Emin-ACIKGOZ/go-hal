@@ -246,6 +246,7 @@ func (e *Envelope) AddCachedLink(link Link, resource any) {
 	if e.err != nil {
 		return
 	}
+	link = normalizeLink(link)
 	linkMeta, err := e.validateLinkForAdd(link)
 	if err != nil {
 		e.err = err

@@ -21,7 +21,7 @@ func TestValidateLink(t *testing.T) {
 		{name: "relative href", link: Link{Rel: "self", Href: "/users/1"}, valid: true},
 		{name: "absolute href", link: Link{Rel: "self", Href: "https://example.com/1"}, valid: true},
 		{name: "template", link: Link{Rel: "find", Href: "/orders{?id}", Templated: true}, valid: true},
-		{name: "template without flag", link: Link{Rel: "find", Href: "/orders{?id}"}, valid: false},
+		{name: "template without flag derives", link: Link{Rel: "find", Href: "/orders{?id}"}, valid: true},
 		{name: "uri with flag", link: Link{Rel: "find", Href: "/orders", Templated: true}, valid: false},
 		{name: "empty href", link: Link{Rel: "self", Href: " "}, valid: false},
 		{name: "bad optional field", link: Link{Rel: "self", Href: "/x", Type: "nope"}, valid: false},
@@ -63,7 +63,7 @@ func TestWithStrictLinks_GeneratedLinkFailsMarshal(t *testing.T) {
 
 	inst := New(WithStrictLinks())
 	RegisterInstance(inst, func(_ context.Context, _ *embeddedTestUser) []Link {
-		return []Link{{Rel: "self", Href: "/ok"}, {Rel: "find", Href: "/x{?id}"}}
+		return []Link{{Rel: "self", Href: "/ok"}, {Rel: "find", Href: "/x{?id"}}
 	})
 	env := inst.Wrap(context.Background(), &embeddedTestUser{ID: 1})
 

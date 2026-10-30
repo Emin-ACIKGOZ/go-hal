@@ -18,9 +18,34 @@ import (
 // the full checks.
 var ErrInvalidLink = errors.New("hal: invalid link")
 
+// deriveTemplated reports whether href is a supported RFC 6570 template with at
+// least one expression and no reserved operator. Percent-encoded braces are
+// data, not expressions.
+func deriveTemplated(href string) bool {
+	if !strings.ContainsRune(href, '{') {
+		return false
+	}
+	tmpl, err := uritemplate.Parse(href)
+	return err == nil && tmpl.HasExpressions() && !tmpl.HasUnsupportedOperator()
+}
+
+// normalizeLink returns l with Templated derived from Href per HAL §5.1-§5.2.
+// A literal href is never reinterpreted, and a malformed or reserved-operator
+// template is not advertised as a template.
+func normalizeLink(l Link) Link {
+	if !l.Templated && deriveTemplated(l.Href) {
+		l.Templated = true
+	}
+	return l
+}
+
 // ValidateLink validates a Link Object without requiring a relation namespace:
 // href URI/template consistency and the optional type, deprecation, profile,
 // and hreflang fields. Rel, name, title, and method are not validated.
+//
+// ValidateLink validates the normalized, as-emitted link: a supported template
+// href derives templated automatically. Callers that marshal a Link struct
+// directly, outside an Envelope, must set Templated themselves.
 func ValidateLink(l Link) error {
 	if err := validateLinkHref(l); err != nil {
 		return err
@@ -29,6 +54,7 @@ func ValidateLink(l Link) error {
 }
 
 func validateLinkHref(l Link) error {
+	l = normalizeLink(l)
 	href := l.Href
 	if strings.TrimSpace(href) == "" {
 		return fmt.Errorf("%w: href must not be empty", ErrInvalidLink)
@@ -55,9 +81,6 @@ func validateTemplatedHref(l Link) error {
 	}
 	if tmpl.HasUnsupportedOperator() {
 		return fmt.Errorf("%w: href template uses an unsupported operator", ErrInvalidLink)
-	}
-	if !l.Templated {
-		return fmt.Errorf("%w: template href requires templated true", ErrInvalidLink)
 	}
 	return nil
 }

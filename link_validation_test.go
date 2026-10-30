@@ -55,7 +55,7 @@ func TestValidateLinkHrefTemplateMatrix(t *testing.T) {
 		valid bool
 	}{
 		{name: "template true", link: Link{Href: "/orders{?id}", Templated: true}, valid: true},
-		{name: "template false", link: Link{Href: "/orders{?id}"}, valid: false},
+		{name: "template false derives", link: Link{Href: "/orders{?id}"}, valid: true},
 		{name: "uri true", link: Link{Href: "/orders/1", Templated: true}, valid: false},
 		{name: "uri false", link: Link{Href: "/orders/1"}, valid: true},
 		{name: "uri true explicit", link: Link{Href: "/orders/1", Templated: true}, valid: false},

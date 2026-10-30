@@ -626,6 +626,7 @@ func (e *Envelope) AddLink(l Link) {
 	if e.err != nil {
 		return
 	}
+	l = normalizeLink(l)
 	meta, err := e.validateLinkForAdd(l)
 	if err != nil {
 		e.err = err
