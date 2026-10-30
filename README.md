@@ -159,10 +159,14 @@ These options are independent of `WithStrictMode` and of each other:
 
 * `WithStrictLinks()` validates href URI references and RFC 6570 templates,
   enforces `templated` consistency, and validates `type`, `deprecation`,
-  `profile`, and `hreflang`.
+  `profile`, and `hreflang`. Media ranges such as `*/*` and unsafe template
+  literal bytes are rejected; brackets and multiple fragments are checked by
+  the URI-reference validator.
 * `WithStrictRelations()` accepts lowercase registered tokens, absolute URI
-  schemes, and declared CURIEs; it rejects relative references, `:x`, and
-  mixed-case bare tokens. An undeclared `acme:widget` remains an opaque URI.
+  schemes, and declared CURIEs; it rejects relative references, `:x`,
+  mixed-case bare tokens, and RFC 8288-invalid underscores such as `a_b`. An
+  undeclared `acme:widget` remains an opaque URI. Default mode accepts `a_b`
+  and does not fold it as a bare-token collision; CURIE prefixes may use `_`.
 * `WithStrictCuries()` requires ASCII NCName-subset names and a single
   `{rel}`/`{+rel}` template with `templated: true`.
 * `WithStrictJSON()` scans the non-empty marshaled Data object for duplicate

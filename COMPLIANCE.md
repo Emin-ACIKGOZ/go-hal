@@ -99,14 +99,22 @@ apply this matrix:
 The URI-reference validator accepts absolute and relative references, including
 the draft §6 examples. It conservatively rejects controls, spaces, non-ASCII
 bytes, malformed percent escapes, backslashes, braces in plain URI references,
-and authorities without a host. It uses `net/url.Parse` plus a component scan,
+raw brackets outside an authority, multiple raw `#` fragment delimiters, and
+authorities without a host. Raw IPv6 brackets are accepted inside an authority;
+percent-encoded `%5B` and `%23` remain data. It uses `net/url.Parse` plus a component scan,
 not a full RFC 3986 parser. The template parser covers operators `+ # . / ; ? &`;
 reserved operators `= , ! @ |` parse but are rejected in strict link and CURIE
 contexts. `%7B` is data, not an expression.
 
-Optional fields: `type` is checked with `mime.ParseMediaType`; `deprecation` and
-`profile` are URI-references; `hreflang` uses a reduced language-tag syntax.
+Optional fields: `type` is checked with `mime.ParseMediaType` and must be a
+concrete media type (wildcards/ranges such as `*/*` and `application/*` are
+rejected); `deprecation` and `profile` are URI-references; `hreflang` uses a
+reduced language-tag syntax. Template literals reject control/space characters
+and the unsafe bytes `"`, `\`, `<`, `>`, `^`, `` ` ``, and `|`.
 `name`, `title`, `method`, and `Rel` are not validated.
+
+These link checks run through `ValidateLink` and `WithStrictLinks`; default
+link output remains permissive.
 
 Strict link policy is applied to `AddLink`, generated links, `RegisterStatic`,
 `Collection` self links, and precomputed wrapping. Static registration panics
@@ -124,6 +132,9 @@ absolute URI scheme (`https`, `urn`, `mailto`, `tag`, ...), and declared CURIEs.
 It rejects relative references, `:x`, and mixed-case bare tokens. Because a
 non-authority scheme form is lexically indistinguishable from a CURIE without
 declaration context, an undeclared `acme:widget` is accepted as an opaque URI.
+RFC 8288 `reg-rel-type` does not include underscore, so strict mode rejects
+`a_b`; default mode still accepts it and does not fold it as a bare-token
+collision. CURIE prefixes and strict NCName declarations still allow `_`.
 
 `ShapeAuto` keeps the default one-object/many-array behavior. `ShapeArray`
 always emits an array, including for one link. `ShapeObject` requires at most one
