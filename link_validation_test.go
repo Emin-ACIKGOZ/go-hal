@@ -78,3 +78,43 @@ func TestValidateLinkHrefTemplateMatrix(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateLinkOptionalFields(t *testing.T) {
+	t.Parallel()
+
+	valid := []Link{
+		{Type: "application/hal+json"},
+		{Type: "text/plain; charset=utf-8"},
+		{Deprecation: "https://example.com/deprecations/v1"},
+		{Deprecation: "/deprecated"},
+		{Profile: "https://example.com/profiles/order"},
+		{HrefLang: "en"},
+		{HrefLang: "en-US"},
+		{HrefLang: "zh-Hant-TW"},
+		{Name: "anything goes", Title: "anything goes", Method: "WHATEVER"},
+	}
+	for i, link := range valid {
+		if err := validateLinkOptional(link); err != nil {
+			t.Errorf("valid optional fields %d rejected: %v", i, err)
+		}
+	}
+
+	invalid := []Link{
+		{Type: "not a media type"},
+		{Type: "application"},
+		{Type: "application/hal+json; bad"},
+		{Deprecation: "/foo bar"},
+		{Deprecation: "/foo\\bar"},
+		{Profile: "http://"},
+		{Profile: "/foo%zz"},
+		{HrefLang: "-en"},
+		{HrefLang: "en-"},
+		{HrefLang: "englishlanguage"},
+		{HrefLang: "en_US"},
+	}
+	for i, link := range invalid {
+		if err := validateLinkOptional(link); !errors.Is(err, ErrInvalidLink) {
+			t.Errorf("invalid optional fields %d = %v, want ErrInvalidLink", i, err)
+		}
+	}
+}

@@ -6,6 +6,7 @@ package hal
 import (
 	"errors"
 	"fmt"
+	"mime"
 	"strings"
 
 	"github.com/Emin-ACIKGOZ/go-hal/internal/uriref"
@@ -49,4 +50,50 @@ func validateTemplatedHref(l Link) error {
 		return fmt.Errorf("%w: template href requires templated true", ErrInvalidLink)
 	}
 	return nil
+}
+
+func validateLinkOptional(l Link) error {
+	if l.Type != "" {
+		mediaType, _, err := mime.ParseMediaType(l.Type)
+		if err != nil || !strings.Contains(mediaType, "/") {
+			return fmt.Errorf("%w: type %q is not a media type", ErrInvalidLink, l.Type)
+		}
+	}
+	if l.Deprecation != "" {
+		if err := uriref.Validate(l.Deprecation); err != nil {
+			return fmt.Errorf("%w: deprecation: %v", ErrInvalidLink, err)
+		}
+	}
+	if l.Profile != "" {
+		if err := uriref.Validate(l.Profile); err != nil {
+			return fmt.Errorf("%w: profile: %v", ErrInvalidLink, err)
+		}
+	}
+	if l.HrefLang != "" && !isLanguageTag(l.HrefLang) {
+		return fmt.Errorf("%w: hreflang %q is not a language tag", ErrInvalidLink, l.HrefLang)
+	}
+	return nil
+}
+
+//nolint:cyclop // Small character-class scanner kept in one pass.
+func isLanguageTag(tag string) bool {
+	parts := strings.Split(tag, "-")
+	if len(parts) == 0 {
+		return false
+	}
+	for i, part := range parts {
+		if len(part) == 0 || len(part) > 8 {
+			return false
+		}
+		for j := 0; j < len(part); j++ {
+			c := part[j]
+			switch {
+			case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
+			case i > 0 && c >= '0' && c <= '9':
+			default:
+				return false
+			}
+		}
+	}
+	return true
 }
