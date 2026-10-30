@@ -4,7 +4,11 @@
 
 If you discover a security vulnerability, do **not** open a public issue or pull request.
 
-Instead, report it **privately** by contacting the project maintainer with:
+Instead, report it **privately** through GitHub's private vulnerability reporting:
+
+https://github.com/Emin-ACIKGOZ/go-hal/security/advisories/new
+
+or by email to **eminsalihacikgoz@gmail.com**, with:
 - A clear description of the issue
 - Steps to reproduce, if applicable
 - Potential impact and affected versions
@@ -16,7 +20,7 @@ You may use encrypted communication if preferred.
 This policy applies to:
 - Public APIs and exported behavior
 - Validation logic, safety guarantees, and concurrency controls
-- Middleware, adapters, and reflection helpers
+- Link generation, adapters, and reflection helpers
 
 Issues caused by misuse outside documented guarantees are generally out of scope.
 
