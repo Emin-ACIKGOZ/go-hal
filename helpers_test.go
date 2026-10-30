@@ -254,6 +254,47 @@ func assertPanics(t *testing.T, want string, fn func()) {
 	}
 }
 
+// assertRejectsNonStrictPrecomputedHandle checks the four precomputed handle
+// variants shared by the strict CURIE and strict link tests.
+func assertRejectsNonStrictPrecomputedHandle(t *testing.T, option InstanceOption, want error) {
+	t.Helper()
+
+	structural, err := CompilePrecomputedLinks([]byte(`{"self":{"href":"/x"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	strict, err := CompilePrecomputedLinksStrict([]byte(`{"self":{"href":"/x"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name   string
+		handle *PrecomputedLinks
+		want   error
+	}{
+		{name: "structural", handle: structural, want: want},
+		{name: "strict", handle: strict},
+		{name: "zero", handle: &PrecomputedLinks{}},
+		{name: "nil", handle: nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env := New(option).WrapPrecomputedLinks(&embeddedTestUser{ID: 1}, tc.handle)
+			b, err := json.Marshal(env)
+			if tc.want != nil {
+				if !errors.Is(err, tc.want) {
+					t.Fatalf("error = %v (output %s), want %v", err, b, tc.want)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("valid handle rejected: %v", err)
+			}
+		})
+	}
+}
+
 func TestJSONAssertionHelpers(t *testing.T) {
 	t.Run("matching values pass", func(t *testing.T) {
 		if err := jsonValuesEqual(

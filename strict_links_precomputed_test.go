@@ -76,40 +76,7 @@ func TestWrapPrecomputed_StrictInstanceValidates(t *testing.T) {
 func TestWrapPrecomputedLinks_StrictRejectsNonStrictHandle(t *testing.T) {
 	t.Parallel()
 
-	structural, err := CompilePrecomputedLinks([]byte(`{"self":{"href":"/x"}}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	strict, err := CompilePrecomputedLinksStrict([]byte(`{"self":{"href":"/x"}}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	tests := []struct {
-		name   string
-		handle *PrecomputedLinks
-		want   error
-	}{
-		{name: "structural", handle: structural, want: ErrInvalidLink},
-		{name: "strict", handle: strict},
-		{name: "zero", handle: &PrecomputedLinks{}},
-		{name: "nil", handle: nil},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			env := New(WithStrictLinks()).WrapPrecomputedLinks(&embeddedTestUser{ID: 1}, tc.handle)
-			b, err := json.Marshal(env)
-			if tc.want != nil {
-				if !errors.Is(err, tc.want) {
-					t.Fatalf("error = %v (output %s), want %v", err, b, tc.want)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("valid handle rejected: %v", err)
-			}
-		})
-	}
+	assertRejectsNonStrictPrecomputedHandle(t, WithStrictLinks(), ErrInvalidLink)
 }
 
 func TestRegisterStatic_StrictValidatesLinks(t *testing.T) {
