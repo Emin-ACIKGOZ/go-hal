@@ -53,7 +53,7 @@ jobs:
 
       - name: Fuzz smoke tests
         run: |
-          for target in FuzzWrapPrecomputed FuzzSplicePrecomputed FuzzMarshal_WithRegisteredGenerator FuzzMarshal_WithoutGenerator FuzzLink_AddLink; do
+          for target in FuzzWrapPrecomputed FuzzSplicePrecomputed FuzzMarshal_WithRegisteredGenerator FuzzMarshal_WithoutGenerator FuzzLink_AddLink FuzzCurieDeclaration FuzzStrictCurieDeclaration FuzzCurieRelTemplate; do
             go test -run='^$' -fuzz="^${target}$" -fuzztime=5s .
           done
 
