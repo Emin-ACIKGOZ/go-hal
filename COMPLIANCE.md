@@ -48,7 +48,7 @@ according to draft-11.
 | Precomputed links | Supported | Validated once with `CompilePrecomputedLinks`; strict compilation with `CompilePrecomputedLinksStrict`; reusable handles. |
 | JSON duplicate-key protection | Partial by default | Precomputed link input is always scanned. `WithStrictJSON` scans marshaled state. |
 | Reserved-field protection | Supported | Top-level `_links` / `_embedded` in user data, including escaped keys, are rejected with `ErrHALFieldConflict`. |
-| Media-type helpers | Supported | `ContentType(profiles...)` formats `application/hal+json` with an RFC 6906 profile parameter. No negotiation. |
+| Media-type helpers | Supported | `ContentType(profiles...)` formats `application/hal+json` with an RFC 6906 profile parameter. Profiles must be absolute URIs. No negotiation. |
 | URI / RFC 6570 template validation | Opt-in | `ValidateLink` and `WithStrictLinks` validate href/templates. Default link output remains permissive. |
 | Hard NCName validation for CURIE names | Opt-in | Default rejects colon/control/whitespace/invalid UTF-8; `WithStrictCuries` applies the ASCII NCName subset. |
 | Automatic self/profile links | Not provided | Add `Link{Rel: "self"}` or `Link{Rel: "profile"}` explicitly. |
@@ -246,10 +246,16 @@ ct, err := hal.ContentType(
 ```
 
 `ContentType` returns the bare media type for zero profiles and joins multiple
-profiles into one space-separated RFC 6906 profile value. It rejects empty,
-whitespace-bearing, control-bearing, non-ASCII, and invalid-UTF-8 profiles. It
-does not perform broader URI validation beyond header safety and does not
-negotiate content.
+profiles into one space-separated RFC 6906 profile value. Each profile must be an
+absolute URI with a scheme; `https:`, `urn:`, `mailto:`, and `tag:` forms are
+accepted, while bare names, relative paths, network-path references, query-only
+and fragment-only references, and non-ASCII IRIs are rejected with
+`ErrInvalidProfile` wrapping `uriref.ErrInvalidURIReference`. Profile bytes are
+preserved as supplied and content is not negotiated.
+
+The vendor type `application/vnd.hal+json` has no optional parameters in its IANA
+registration, so the `profile` parameter belongs to `application/hal+json` only;
+`ContentType` never emits the vendor type.
 
 The serializer never adds a `self` or `profile` link automatically. Add them
 explicitly when required by draft §8.1 or §7.1.

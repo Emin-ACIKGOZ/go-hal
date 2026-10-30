@@ -4,9 +4,12 @@
 package hal
 
 import (
+	"errors"
 	"mime"
 	"strings"
 	"testing"
+
+	"github.com/Emin-ACIKGOZ/go-hal/internal/uriref"
 )
 
 func TestMediaTypeConstants(t *testing.T) {
@@ -99,5 +102,67 @@ func TestContentType_VendorTypeIsParameterless(t *testing.T) {
 
 	if strings.ContainsRune(MediaTypeVendorHAL, ';') {
 		t.Fatalf("vendor media type carries parameters: %q", MediaTypeVendorHAL)
+	}
+}
+
+func TestContentType_RequiresAbsoluteURIProfiles(t *testing.T) {
+	t.Parallel()
+
+	valid := []string{
+		"https://example.com/profiles/order",
+		"HTTPS://example.com/profiles/order",
+		"urn:example:profile",
+		"mailto:user@example.com",
+		"tag:example.com,2026:profile",
+		"https://example.com/a%20b",
+		"https://example.com/a;b",
+		"https://example.com/a,b",
+		"https://example.com/a=b",
+	}
+	for _, profile := range valid {
+		got, err := ContentType(profile)
+		if err != nil {
+			t.Errorf("ContentType(%q) = %v, want nil", profile, err)
+			continue
+		}
+		mediaType, params, err := mime.ParseMediaType(got)
+		if err != nil {
+			t.Errorf("ParseMediaType(%q): %v", got, err)
+			continue
+		}
+		if mediaType != MediaTypeHAL || params["profile"] != profile {
+			t.Errorf("round-trip(%q) = %q (%q)", profile, mediaType, params["profile"])
+		}
+	}
+
+	invalid := []string{
+		"notauri",
+		"relative/path",
+		"/abs/path",
+		"//example.com/path",
+		"?query=only",
+		"#fragment",
+		"",
+		"   ",
+		"https://",
+		"http:///x",
+		"1a:b",
+		"https://example.com/受",
+	}
+	for _, profile := range invalid {
+		got, err := ContentType(profile)
+		if err == nil {
+			t.Errorf("ContentType(%q) = %q, want error", profile, got)
+			continue
+		}
+		if got != "" {
+			t.Errorf("ContentType(%q) returned partial output %q", profile, got)
+		}
+		if !errors.Is(err, ErrInvalidProfile) {
+			t.Errorf("ContentType(%q) error = %v, want ErrInvalidProfile", profile, err)
+		}
+		if !errors.Is(err, uriref.ErrInvalidURIReference) {
+			t.Errorf("ContentType(%q) error = %v, want ErrInvalidURIReference", profile, err)
+		}
 	}
 }
