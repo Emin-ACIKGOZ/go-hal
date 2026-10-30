@@ -199,7 +199,7 @@ func compileStaticLinks(links []Link) *PrecomputedLinks {
 		if l.Rel == relCuries {
 			curies = append(curies, l)
 		}
-		appendLinkValue(linksMap, l.Rel, l)
+		appendRelationValue(linksMap, l.Rel, l)
 	}
 	if err := validateCurieDeclarations(curies); err != nil {
 		panic(fmt.Sprintf("hal: RegisterStatic: %v", err))
